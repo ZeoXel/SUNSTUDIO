@@ -862,16 +862,12 @@ export default function StudioTab() {
               canvasY = clientY - rect.top;
           }
 
-          // 拖拽节点时跳过不必要的状态更新
-          const isDraggingNode = !!(draggingNodeId && dragNodeRef.current);
-
-          // 只在连接线预览时更新 mousePos（拖拽节点时不需要）
-          if (connectionStartRef.current && !isDraggingNode) {
-              setMousePos({ x: canvasX, y: canvasY });
-          }
+          // Always update mousePos for connection preview (using canvas-relative coords)
+          setMousePos({ x: canvasX, y: canvasY });
 
           if (selectionRect) {
               setSelectionRect((prev:any) => prev ? ({ ...prev, currentX: canvasX, currentY: canvasY }) : null);
+              // Don't return - allow mousePos update for connection preview
               if (!connectionStartRef.current) return;
           }
 
@@ -896,7 +892,7 @@ export default function StudioTab() {
               setLastMousePos({ x: clientX, y: clientY });
           }
 
-          if (isDraggingNode && dragNodeRef.current && dragNodeRef.current.id === draggingNodeId) {
+          if (draggingNodeId && dragNodeRef.current && dragNodeRef.current.id === draggingNodeId) {
              const { startX, startY, mouseStartX, mouseStartY, nodeWidth, nodeHeight, otherSelectedNodes } = dragNodeRef.current;
              let dx = (clientX - mouseStartX) / scale;
              let dy = (clientY - mouseStartY) / scale;
@@ -906,20 +902,14 @@ export default function StudioTab() {
              // 获取所有正在拖动的节点 ID（主节点 + 其他选中节点）
              const draggingIds = new Set([draggingNodeId, ...(otherSelectedNodes?.map(n => n.id) || [])]);
 
-             // Snap Logic（只对非拖动中的节点进行吸附检测，限制遍历数量）
+             // Snap Logic（只对非拖动中的节点进行吸附检测）
              const SNAP = SNAP_THRESHOLD / scale;
              const myL = proposedX; const myC = proposedX + nodeWidth / 2; const myR = proposedX + nodeWidth;
              const myT = proposedY; const myM = proposedY + nodeHeight / 2; const myB = proposedY + nodeHeight;
              let snappedX = false; let snappedY = false;
 
-             // 只检查附近的节点（性能优化）
-             const nearbyRange = 500;
-             for (const other of nodesRef.current) {
-                 if (draggingIds.has(other.id)) continue;
-                 // 快速距离检查，跳过太远的节点
-                 if (Math.abs(other.x - proposedX) > nearbyRange && Math.abs(other.y - proposedY) > nearbyRange) continue;
-                 if (snappedX && snappedY) break;
-
+             nodesRef.current.forEach(other => {
+                 if (draggingIds.has(other.id)) return; // 跳过所有正在拖动的节点
                  const otherBounds = getNodeBounds(other);
                  if (!snappedX) {
                      if (Math.abs(myL - otherBounds.x) < SNAP) { proposedX = otherBounds.x; snappedX = true; }
@@ -935,17 +925,18 @@ export default function StudioTab() {
                      else if (Math.abs(myB - otherBounds.b) < SNAP) { proposedY = otherBounds.b - nodeHeight; snappedY = true; }
                      else if (Math.abs(myM - (otherBounds.y+otherBounds.height/2)) < SNAP) { proposedY = (otherBounds.y+otherBounds.height/2) - nodeHeight/2; snappedY = true; }
                  }
-             }
+             })
 
              // 计算实际位移（考虑吸附后的调整）
              const actualDx = proposedX - startX;
              const actualDy = proposedY - startY;
 
-             // 直接更新节点位置
+             // 同时移动主节点和其他选中节点
              setNodes(prev => prev.map(n => {
                  if (n.id === draggingNodeId) {
                      return { ...n, x: proposedX, y: proposedY };
                  }
+                 // 移动其他选中的节点
                  const otherNode = otherSelectedNodes?.find(on => on.id === n.id);
                  if (otherNode) {
                      return { ...n, x: otherNode.startX + actualDx, y: otherNode.startY + actualDy };
@@ -2220,7 +2211,7 @@ export default function StudioTab() {
                   isSelected={selectedNodeIds.includes(node.id)} 
                   inputAssets={node.inputs.map(i => nodes.find(n => n.id === i)).filter(n => n && (n.data.image || n.data.videoUri || n.data.croppedFrame)).slice(0, 6).map(n => ({ id: n!.id, type: (n!.data.croppedFrame || n!.data.image) ? 'image' : 'video', src: n!.data.croppedFrame || n!.data.image || n!.data.videoUri! }))}
                   onInputReorder={(nodeId, newOrder) => { const node = nodes.find(n => n.id === nodeId); if (node) { setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, inputs: newOrder } : n)); } }}
-                  isDragging={draggingNodeId === node.id || (!!draggingNodeId && selectedNodeIds.includes(node.id))} isResizing={resizingNodeId === node.id} isConnecting={!!connectionStart} isGroupDragging={activeGroupNodeIds.includes(node.id)}
+                  isDragging={draggingNodeId === node.id} isResizing={resizingNodeId === node.id} isConnecting={!!connectionStart} isGroupDragging={activeGroupNodeIds.includes(node.id)}
               />
               ))}
 

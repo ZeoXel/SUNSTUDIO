@@ -1329,6 +1329,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                     transition: isInteracting ? 'none' : 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
                     backdropFilter: isInteracting ? 'none' : 'blur(18px)',
                     boxShadow: isInteracting ? 'none' : undefined,
+                    willChange: isInteracting ? 'left, top, width, height' : 'auto'
                 }}
                 onMouseDown={(e) => onNodeMouseDown(e, node.id)} onMouseEnter={() => !isInteracting && setIsHovered(true)} onMouseLeave={() => !isInteracting && setIsHovered(false)} onContextMenu={(e) => onNodeContextMenu(e, node.id)}
             >
