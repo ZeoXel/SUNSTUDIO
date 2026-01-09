@@ -100,7 +100,7 @@ const CanvasPreview: React.FC<{
 
     if (nodes.length === 0) {
         return (
-            <div className="w-full h-full flex items-center justify-center text-slate-300">
+            <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600">
                 <Layers size={24} />
             </div>
         );
@@ -152,7 +152,7 @@ const CanvasPreview: React.FC<{
             {/* 背景网格 */}
             <defs>
                 <pattern id={patternId} width="12" height="12" patternUnits="userSpaceOnUse">
-                    <circle cx="1" cy="1" r="0.5" fill="#e2e8f0" />
+                    <circle cx="1" cy="1" r="0.5" fill="currentColor" className="text-slate-300 dark:text-slate-700" />
                 </pattern>
             </defs>
             <rect width="100%" height="100%" fill={`url(#${patternId})`} />
@@ -331,22 +331,22 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
 
             return (
                 <>
-                    <div className="p-4 border-b border-slate-200 flex flex-col gap-3 bg-slate-50">
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col gap-3 bg-slate-50 dark:bg-slate-800">
                         <div className="flex justify-between items-center">
-                            <button onClick={() => setActivePanel(null)}><X size={14} className="text-slate-500 hover:text-slate-900" /></button>
-                            <span className="text-xs font-bold uppercase tracking-widest text-white/50">历史记录</span>
+                            <button onClick={() => setActivePanel(null)}><X size={14} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100" /></button>
+                            <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">历史记录</span>
                         </div>
                         {/* Tabs */}
-                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
                             <button
                                 onClick={() => setActiveHistoryTab('image')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeHistoryTab === 'image' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-600'}`}
+                                className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeHistoryTab === 'image' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
                             >
                                 <ImageIcon size={12} /> 图片
                             </button>
                             <button
                                 onClick={() => setActiveHistoryTab('video')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeHistoryTab === 'video' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-600'}`}
+                                className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeHistoryTab === 'video' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
                             >
                                 <VideoIcon size={12} /> 视频
                             </button>
@@ -354,7 +354,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2 relative">
                         {filteredAssets.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-10 text-slate-500 opacity-60 select-none">
+                            <div className="flex flex-col items-center justify-center py-10 text-slate-500 dark:text-slate-400 opacity-60 select-none">
                                 {activeHistoryTab === 'image' ? <ImageIcon size={48} strokeWidth={1} className="mb-3 opacity-50" /> : <Film size={48} strokeWidth={1} className="mb-3 opacity-50" />}
                                 <span className="text-[10px] font-medium tracking-widest uppercase">暂无{activeHistoryTab === 'image' ? '图片' : '视频'}</span>
                             </div>
@@ -363,7 +363,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                                 {filteredAssets.map(a => (
                                     <div
                                         key={a.id}
-                                        className="aspect-square rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border border-slate-200 hover:border-blue-500/50 transition-colors group relative shadow-md bg-slate-100"
+                                        className="aspect-square rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 dark:hover:border-blue-400/50 transition-colors group relative shadow-md bg-slate-100 dark:bg-slate-800"
                                         draggable={true}
                                         onDragStart={(e) => {
                                             e.dataTransfer.setData('application/json', JSON.stringify(a));
@@ -381,10 +381,10 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                                         ) : (
                                             <video src={a.src} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" draggable={false} />
                                         )}
-                                        <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-white/90 backdrop-blur-md text-[8px] font-bold text-slate-700">
+                                        <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-md text-[8px] font-bold text-slate-700 dark:text-slate-300">
                                             {a.type.includes('image') ? 'IMG' : 'MOV'}
                                         </div>
-                                        <div className="absolute bottom-0 left-0 w-full p-1.5 bg-gradient-to-t from-white/90 to-transparent text-[9px] text-slate-900 truncate font-medium">
+                                        <div className="absolute bottom-0 left-0 w-full p-1.5 bg-gradient-to-t from-white/90 dark:from-slate-900/90 to-transparent text-[9px] text-slate-900 dark:text-slate-100 truncate font-medium">
                                             {a.title || 'Untitled'}
                                         </div>
                                     </div>
@@ -404,17 +404,17 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
 
             return (
                 <>
-                    <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                        <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+                        <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
                             画布管理
                         </span>
-                        <button onClick={onNewCanvas} className="p-1.5 bg-blue-500/20 text-blue-500 hover:bg-blue-500 hover:text-white rounded-md transition-colors" title="新建画布">
+                        <button onClick={onNewCanvas} className="p-1.5 bg-blue-500/20 dark:bg-blue-500/30 text-blue-500 dark:text-blue-400 hover:bg-blue-500 hover:text-white rounded-md transition-colors" title="新建画布">
                             <Plus size={14} />
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-3 relative">
                         {canvases.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-10 text-slate-500 opacity-60 select-none">
+                            <div className="flex flex-col items-center justify-center py-10 text-slate-500 dark:text-slate-400 opacity-60 select-none">
                                 <Layers size={48} strokeWidth={1} className="mb-3 opacity-50" />
                                 <span className="text-[10px] font-medium tracking-widest uppercase text-center">暂无画布<br />点击 + 创建新画布</span>
                             </div>
@@ -423,8 +423,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                                 <div
                                     key={canvas.id}
                                     className={`
-                                        relative p-2 rounded-xl border bg-slate-50 group transition-all duration-300 cursor-pointer hover:bg-white
-                                        ${currentCanvasId === canvas.id ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300'}
+                                        relative p-2 rounded-xl border bg-slate-50 dark:bg-slate-800 group transition-all duration-300 cursor-pointer hover:bg-white dark:hover:bg-slate-700
+                                        ${currentCanvasId === canvas.id ? 'border-blue-500 dark:border-blue-400 ring-1 ring-blue-500/20 dark:ring-blue-400/20' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'}
                                     `}
                                     onClick={(e) => { e.stopPropagation(); onSelectCanvas(canvas.id); }}
                                     onDoubleClick={(e) => { e.stopPropagation(); setEditingCanvasId(canvas.id); }}
@@ -434,10 +434,10 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                                         setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: canvas.id, type: 'canvas' });
                                     }}
                                 >
-                                    <div className="aspect-[2/1] bg-slate-100 rounded-lg mb-2 overflow-hidden relative">
+                                    <div className="aspect-[2/1] bg-slate-100 dark:bg-slate-900 rounded-lg mb-2 overflow-hidden relative">
                                         <CanvasPreview nodes={canvas.nodes} groups={canvas.groups} connections={canvas.connections} canvasId={canvas.id} />
                                         {currentCanvasId === canvas.id && (
-                                            <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-blue-500 text-[8px] font-bold text-white">
+                                            <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-blue-500 dark:bg-blue-400 text-[8px] font-bold text-white">
                                                 当前
                                             </div>
                                         )}
@@ -445,19 +445,19 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                                     <div className="flex items-center justify-between px-1">
                                         {editingCanvasId === canvas.id ? (
                                             <input
-                                                className="bg-white border border-blue-500/50 rounded px-1 text-xs text-slate-900 w-full outline-none"
+                                                className="bg-white dark:bg-slate-700 border border-blue-500/50 dark:border-blue-400/50 rounded px-1 text-xs text-slate-900 dark:text-slate-100 w-full outline-none"
                                                 defaultValue={canvas.title}
                                                 autoFocus
                                                 onBlur={(e) => { onRenameCanvas(canvas.id, e.target.value); setEditingCanvasId(null); }}
                                                 onKeyDown={(e) => { if (e.key === 'Enter') { onRenameCanvas(canvas.id, e.currentTarget.value); setEditingCanvasId(null); } }}
                                             />
                                         ) : (
-                                            <span className="text-xs font-medium text-slate-600 truncate select-none group-hover:text-slate-900 transition-colors">{canvas.title}</span>
+                                            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate select-none group-hover:text-slate-900 dark:group-hover:text-slate-100 transition-colors">{canvas.title}</span>
                                         )}
-                                        <span className="text-[9px] text-slate-400 font-mono">{canvas.nodes.length} 节点</span>
+                                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">{canvas.nodes.length} 节点</span>
                                     </div>
                                     <div className="px-1 mt-1">
-                                        <span className="text-[9px] text-slate-400">{formatDate(canvas.updatedAt)}</span>
+                                        <span className="text-[9px] text-slate-400 dark:text-slate-500">{formatDate(canvas.updatedAt)}</span>
                                     </div>
                                 </div>
                             ))
@@ -470,9 +470,9 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
         // Default: Add Node
         return (
             <>
-                <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                    <button onClick={() => setActivePanel(null)}><X size={14} className="text-slate-500 hover:text-slate-900" /></button>
-                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+                    <button onClick={() => setActivePanel(null)}><X size={14} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100" /></button>
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
                         添加节点
                     </span>
                 </div>
@@ -483,9 +483,9 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                             <button
                                 key={t}
                                 onClick={(e) => { e.stopPropagation(); onAddNode(t); setActivePanel(null); }}
-                                className="w-full text-left p-3 rounded-xl bg-slate-50 hover:bg-slate-100 flex items-center gap-3 text-sm text-slate-700 transition-colors border border-transparent hover:border-slate-200 hover:shadow-lg"
+                                className="w-full text-left p-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-3 text-sm text-slate-700 dark:text-slate-300 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-lg"
                             >
-                                <div className="p-2 bg-slate-100 rounded-lg text-blue-200 shadow-inner">
+                                <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-blue-500 dark:text-blue-400 shadow-inner">
                                     <ItemIcon size={16} />
                                 </div>
                                 <div className="flex flex-col">
@@ -503,7 +503,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
         <>
             {/* Left Vertical Dock */}
             <div
-                className="fixed left-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 p-2 bg-[#ffffff]/70 backdrop-blur-2xl border border-slate-300 rounded-2xl shadow-2xl z-50 animate-in slide-in-from-left-10 duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                className="fixed left-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 p-2 bg-[#ffffff]/70 dark:bg-slate-900/70 backdrop-blur-2xl border border-slate-300 dark:border-slate-700 rounded-2xl shadow-2xl z-50 animate-in slide-in-from-left-10 duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
                 onMouseLeave={handleSidebarLeave}
             >
                 {[
@@ -531,8 +531,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                                     transition-all duration-150 ease-out
                                     hover:scale-105 active:scale-95
                                     ${isActive
-                                        ? 'bg-white text-slate-900 shadow-lg'
-                                        : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-lg'
+                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60'
                                     }
                                 `}
                             >
@@ -540,7 +540,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                             </button>
                             {/* Tooltip - 仅在非面板按钮悬停时显示，或面板关闭时显示 */}
                             {(!hasPanel || !isPanelVisible) && (
-                                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-white/95 backdrop-blur-md rounded-md border border-slate-200 text-[10px] font-medium text-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 shadow-sm">
+                                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-md border border-slate-200 dark:border-slate-700 text-[10px] font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 shadow-sm">
                                     {item.tooltip}
                                 </div>
                             )}
@@ -560,8 +560,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                             transition-all duration-150 ease-out
                             hover:scale-105 active:scale-95
                             ${activePanel === 'canvas'
-                                ? 'bg-white text-slate-900 shadow-lg'
-                                : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-lg'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60'
                             }
                         `}
                     >
@@ -569,7 +569,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     </button>
                     {/* Tooltip - 仅在面板关闭时显示 */}
                     {!isPanelVisible && (
-                        <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-white/95 backdrop-blur-md rounded-md border border-slate-200 text-[10px] font-medium text-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 shadow-sm">
+                        <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-md border border-slate-200 dark:border-slate-700 text-[10px] font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 shadow-sm">
                             画布管理
                         </div>
                     )}
@@ -581,7 +581,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
             <div
                 className={`
                     fixed left-24 top-1/2 -translate-y-1/2 max-h-[75vh] h-auto w-72
-                    bg-white/90 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-2xl
+                    bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border border-slate-200/80 dark:border-slate-700/80 rounded-2xl shadow-2xl
                     z-40 flex flex-col overflow-hidden
                     transition-all duration-200 ease-[${EASE_OUT}]
                     ${isPanelVisible && activePanel
@@ -604,22 +604,22 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
             {/* Global Context Menu (Rendered outside the transformed panel to fix positioning) */}
             {contextMenu && (
                 <div
-                    className="fixed z-[100] bg-[#ffffff] border border-slate-300 rounded-lg shadow-2xl p-1 animate-in fade-in zoom-in-95 duration-200 min-w-[120px]"
+                    className="fixed z-[100] bg-[#ffffff] dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg shadow-2xl p-1 animate-in fade-in zoom-in-95 duration-200 min-w-[120px]"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onMouseDown={e => e.stopPropagation()}
                     onMouseLeave={() => setContextMenu(null)}
                 >
                     {contextMenu.type === 'history' && (
-                        <button className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/20 rounded-md flex items-center gap-2" onClick={() => { onDeleteAsset(contextMenu.id); setContextMenu(null); }}>
+                        <button className="w-full text-left px-3 py-2 text-xs text-red-400 dark:text-red-400 hover:bg-red-500/20 dark:hover:bg-red-500/30 rounded-md flex items-center gap-2" onClick={() => { onDeleteAsset(contextMenu.id); setContextMenu(null); }}>
                             <Trash2 size={12} /> 删除
                         </button>
                     )}
                     {contextMenu.type === 'canvas' && (
                         <>
-                            <button className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 rounded-md flex items-center gap-2" onClick={() => { setEditingCanvasId(contextMenu.id); setContextMenu(null); }}>
+                            <button className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md flex items-center gap-2" onClick={() => { setEditingCanvasId(contextMenu.id); setContextMenu(null); }}>
                                 <Edit size={12} /> 重命名
                             </button>
-                            <button className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/20 rounded-md flex items-center gap-2" onClick={() => { onDeleteCanvas(contextMenu.id); setContextMenu(null); }}>
+                            <button className="w-full text-left px-3 py-2 text-xs text-red-400 dark:text-red-400 hover:bg-red-500/20 dark:hover:bg-red-500/30 rounded-md flex items-center gap-2" onClick={() => { onDeleteCanvas(contextMenu.id); setContextMenu(null); }}>
                                 <Trash2 size={12} /> 删除
                             </button>
                         </>

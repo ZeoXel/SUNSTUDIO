@@ -2128,7 +2128,7 @@ export default function StudioTab() {
                                     <path
                                         ref={(el) => { if (el) connectionPathsRef.current.set(connKey, el); else connectionPathsRef.current.delete(connKey); }}
                                         d={d}
-                                        stroke={isAutoConnection ? "url(#autoGradient)" : "url(#gradient)"}
+                                        stroke={isAutoConnection ? `url(#${theme === 'dark' ? 'autoGradientDark' : 'autoGradient'})` : `url(#${theme === 'dark' ? 'gradientDark' : 'gradient'})`}
                                         strokeWidth={(isAutoConnection ? 2 : 3) / scale}
                                         fill="none"
                                         strokeOpacity={isAutoConnection ? "0.4" : "0.5"}
@@ -2152,6 +2152,19 @@ export default function StudioTab() {
                             <linearGradient id="previewGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                                 <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.9" />
                                 <stop offset="100%" stopColor="#a855f7" stopOpacity="0.9" />
+                            </linearGradient>
+                            {/* Dark mode gradients */}
+                            <linearGradient id="gradientDark" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.6" />
+                                <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.6" />
+                            </linearGradient>
+                            <linearGradient id="autoGradientDark" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#64748b" stopOpacity="0.5" />
+                                <stop offset="100%" stopColor="#94a3b8" stopOpacity="0.5" />
+                            </linearGradient>
+                            <linearGradient id="previewGradientDark" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.9" />
+                                <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.9" />
                             </linearGradient>
                         </defs>
                         {connectionStart && (() => {
@@ -2181,7 +2194,7 @@ export default function StudioTab() {
                             return (
                                 <path
                                     d={`M ${startX} ${startY} L ${endX} ${endY}`}
-                                    stroke="url(#previewGradient)"
+                                    stroke={`url(#${theme === 'dark' ? 'previewGradientDark' : 'previewGradient'})`}
                                     strokeWidth={3 / scale}
                                     fill="none"
                                     className="connection-preview-line"
