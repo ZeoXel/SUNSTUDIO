@@ -1988,16 +1988,22 @@ export default function StudioTab() {
     <div className="w-screen h-screen overflow-hidden bg-slate-50">
       <div
           ref={canvasContainerRef}
+          data-canvas-container
           className={`w-full h-full overflow-hidden text-slate-700 selection:bg-blue-200 ${isDraggingCanvas ? 'cursor-grabbing' : 'cursor-default'} ${(isDraggingCanvas || draggingNodeId || resizingNodeId || connectionStart || selectionRect || draggingGroup) ? 'select-none' : ''}`}
           onMouseDown={handleCanvasMouseDown}
           onDoubleClick={(e) => {
               e.preventDefault();
-              // 只在画布空白区域双击时触发（排除节点、侧边栏等）
+              // 只在画布空白区域双击时触发（排除节点、组等）
               const target = e.target as HTMLElement;
-              const isCanvasArea = target === e.currentTarget ||
+              const isOnNode = target.closest('[data-node-id]');
+              const isOnGroup = target.closest('[data-group-id]');
+              const isCanvasArea = !isOnNode && !isOnGroup && (
+                  target === e.currentTarget ||
                   target.classList.contains('noise-bg') ||
-                  target.style.backgroundImage?.includes('radial-gradient');
-              if (e.detail > 1 && !selectionRect && isCanvasArea) {
+                  target.style.backgroundImage?.includes('radial-gradient') ||
+                  target.closest('[data-canvas-container]') === e.currentTarget
+              );
+              if (!selectionRect && isCanvasArea) {
                   setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: '' });
                   setContextMenuTarget({ type: 'create' });
               }
@@ -2017,10 +2023,18 @@ export default function StudioTab() {
           <div className="absolute inset-0 noise-bg" />
           <div className="absolute inset-0 pointer-events-none opacity-[0.06]" style={{ backgroundImage: 'radial-gradient(circle, #aaa 1px, transparent 1px)', backgroundSize: `${32 * scale}px ${32 * scale}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }} />
 
-          <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-[${SPRING}] z-50 pointer-events-none ${nodes.length > 0 ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`}>
+          <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-[${SPRING}] z-10 pointer-events-none ${nodes.length > 0 ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`}>
                 <div className="flex flex-col items-center justify-center select-none animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <p className="text-3xl font-semibold tracking-tight text-slate-400 mb-4">LSAI Studio</p>
-                    <span className="text-sm text-slate-400">双击画布开始创作</span>
+                    <div className="flex items-center gap-1.5 mb-4">
+                        <span className="text-3xl font-semibold tracking-tight text-slate-400">LSAI</span>
+                        <div className="flex items-center gap-0.5 mx-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                        </div>
+                        <span className="text-3xl font-semibold tracking-tight text-slate-400">Studio</span>
+                    </div>
+                    <span className="text-sm text-slate-400/80">双击画布开始创作</span>
                 </div>
             </div>
 
