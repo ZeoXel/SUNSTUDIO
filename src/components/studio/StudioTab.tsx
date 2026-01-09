@@ -2018,40 +2018,9 @@ export default function StudioTab() {
           <div className="absolute inset-0 pointer-events-none opacity-[0.06]" style={{ backgroundImage: 'radial-gradient(circle, #aaa 1px, transparent 1px)', backgroundSize: `${32 * scale}px ${32 * scale}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }} />
 
           <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-[${SPRING}] z-50 pointer-events-none ${nodes.length > 0 ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`}>
-                <div className="flex flex-col items-center justify-center mb-10 select-none animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                    <div className="relative flex flex-col items-center gap-4">
-                        <div className="relative p-6 rounded-[32px] bg-white border border-slate-200 shadow-2xl">
-                            <Image src="/logo.svg" alt="AgentPlatform Logo" width={96} height={96} priority className="w-24 h-24" />
-                            <div className="absolute -inset-3 bg-gradient-to-r from-blue-200/30 via-cyan-200/30 to-purple-200/30 blur-[80px] opacity-80 pointer-events-none" />
-                        </div>
-                        <p className="text-4xl md:text-5xl font-bold tracking-tight text-slate-700 drop-shadow-sm">AgentPlatform Studio</p>
-                        <span className="text-sm font-semibold tracking-[0.4em] text-slate-400 uppercase">AgentPlatform</span>
-                    </div>
-                </div>
-
-                <div className="flex flex-col items-center gap-2 mb-6 text-slate-500 text-xs font-medium tracking-wide opacity-90">
-                    <div className="px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[11px] font-semibold text-blue-600 flex items-center gap-1">
-                        <MousePointerClick size={12} className="text-blue-500" />
-                        <span>双击画布开始创作</span>
-                    </div>
-                    <span>拖拽节点或载入工作流模板，快速搭建智能场景</span>
-                </div>
-
-                <div className={`flex items-center gap-1.5 p-1.5 rounded-[18px] bg-white/90 border border-slate-200 backdrop-blur-xl shadow-2xl ${nodes.length > 0 ? 'pointer-events-none' : 'pointer-events-auto'}`}>
-                    <button onClick={() => addNode(NodeType.IMAGE_GENERATOR)} className="flex items-center gap-2.5 px-5 py-3 rounded-[14px] bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-all border border-slate-200 hover:border-slate-300 group shadow-sm hover:shadow-md hover:-translate-y-0.5 duration-300">
-                        <ImageIcon size={16} className="text-slate-400 transition-colors group-hover:text-blue-600" />
-                        <span className="text-[13px] font-medium tracking-wide">图片生成</span>
-                    </button>
-
-                     <button onClick={() => addNode(NodeType.VIDEO_GENERATOR)} className="flex items-center gap-2.5 px-5 py-3 rounded-[14px] bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-all border border-slate-200 hover:border-slate-300 group shadow-sm hover:shadow-md hover:-translate-y-0.5 duration-300">
-                        <Film size={16} className="text-slate-400 transition-colors group-hover:text-purple-400" />
-                        <span className="text-[13px] font-medium tracking-wide">视频生成</span>
-                    </button>
-
-                    <button onClick={() => addNode(NodeType.VIDEO_GENERATOR, undefined, undefined, { generationMode: 'FIRST_LAST_FRAME' })} className="flex items-center gap-2.5 px-5 py-3 rounded-[14px] bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-all border border-slate-200 hover:border-slate-300 group shadow-sm hover:shadow-md hover:-translate-y-0.5 duration-300">
-                        <Link size={16} className="text-slate-400 transition-colors group-hover:text-emerald-400" />
-                        <span className="text-[13px] font-medium tracking-wide">首尾插帧</span>
-                    </button>
+                <div className="flex flex-col items-center justify-center select-none animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <p className="text-3xl font-semibold tracking-tight text-slate-400 mb-4">LSAI Studio</p>
+                    <span className="text-sm text-slate-400">双击画布开始创作</span>
                 </div>
             </div>
 
