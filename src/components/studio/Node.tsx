@@ -36,6 +36,7 @@ interface NodeProps {
     onGridDragStateChange?: (state: { isDragging: boolean; type?: 'image' | 'video'; src?: string; screenX?: number; screenY?: number } | null) => void; // 通知父组件拖拽状态变化
     inputAssets?: InputAsset[];
     onInputReorder?: (nodeId: string, newOrder: string[]) => void;
+    nodeRef?: (el: HTMLDivElement | null) => void; // 用于父组件直接操作 DOM
 
     isDragging?: boolean;
     isGroupDragging?: boolean;
@@ -369,7 +370,7 @@ const AudioVisualizer = ({ isPlaying }: { isPlaying: boolean }) => (
 );
 
 const NodeComponent: React.FC<NodeProps> = ({
-    node, onUpdate, onAction, onDelete, onExpand, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, inputAssets, onInputReorder, isDragging, isGroupDragging, isSelected, isResizing, isConnecting
+    node, onUpdate, onAction, onDelete, onExpand, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting
 }) => {
     const isWorking = node.status === NodeStatus.WORKING;
     const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | HTMLAudioElement | null>(null);
@@ -1321,15 +1322,17 @@ const NodeComponent: React.FC<NodeProps> = ({
     return (
         <>
             <div
+                ref={nodeRef}
                 className={`absolute rounded-[24px] group ring-2 ${contentBorderColor} ${isSelected ? 'ring-[3px] shadow-[0_20px_60px_rgba(59,130,246,0.15)]' : 'hover:ring-[3px]'}`}
                 style={{
-                    left: node.x, top: node.y, width: nodeWidth, height: nodeHeight,
+                    left: 0, top: 0, width: nodeWidth, height: nodeHeight,
+                    transform: `translate(${node.x}px, ${node.y}px)`,
                     zIndex: isSelected ? 50 : 10,
                     background: isSelected ? 'rgba(255, 255, 255, 0.96)' : 'rgba(250, 250, 255, 0.9)',
-                    transition: isInteracting ? 'none' : 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+                    transition: isInteracting ? 'none' : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), width 0.5s cubic-bezier(0.32, 0.72, 0, 1), height 0.5s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.3s, ring 0.3s',
                     backdropFilter: isInteracting ? 'none' : 'blur(18px)',
                     boxShadow: isInteracting ? 'none' : undefined,
-                    willChange: isInteracting ? 'left, top, width, height' : 'auto'
+                    willChange: isInteracting ? 'transform' : 'auto'
                 }}
                 onMouseDown={(e) => onNodeMouseDown(e, node.id)} onMouseEnter={() => !isInteracting && setIsHovered(true)} onMouseLeave={() => !isInteracting && setIsHovered(false)} onContextMenu={(e) => onNodeContextMenu(e, node.id)}
             >
@@ -1428,8 +1431,8 @@ const NodeComponent: React.FC<NodeProps> = ({
                 <div
                     className="absolute bg-white rounded-[24px] shadow-2xl transition-all duration-200"
                     style={{
-                        left: node.x,
-                        top: node.y,
+                        left: 0, top: 0,
+                        transform: `translate(${node.x}px, ${node.y}px)`,
                         width: gridWidth,
                         height: gridHeight,
                         zIndex: showImageGrid ? 200 : -1,

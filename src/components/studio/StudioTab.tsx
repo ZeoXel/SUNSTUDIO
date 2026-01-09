@@ -240,6 +240,7 @@ export default function StudioTab() {
   const connectionStartRef = useRef(connectionStart);
   const rafRef = useRef<number | null>(null); // For RAF Throttling
   const canvasContainerRef = useRef<HTMLDivElement>(null); // Canvas container ref for coordinate offset
+  const nodeRefsMap = useRef<Map<string, HTMLDivElement>>(new Map()); // 节点 DOM 引用，用于直接操作
   
   // Replacement Input Refs
   const replaceVideoInputRef = useRef<HTMLInputElement>(null);
@@ -258,7 +259,12 @@ export default function StudioTab() {
       nodeWidth: number,
       nodeHeight: number,
       // 多选拖动：其他被选中节点的初始位置
-      otherSelectedNodes?: { id: string, startX: number, startY: number }[]
+      otherSelectedNodes?: { id: string, startX: number, startY: number }[],
+      // 当前拖拽位置（用于 DOM 直接操作后提交 state）
+      currentX?: number,
+      currentY?: number,
+      currentDx?: number,
+      currentDy?: number
   } | null>(null);
 
   const resizeContextRef = useRef<{
@@ -931,23 +937,35 @@ export default function StudioTab() {
              const actualDx = proposedX - startX;
              const actualDy = proposedY - startY;
 
-             // 同时移动主节点和其他选中节点
-             setNodes(prev => prev.map(n => {
-                 if (n.id === draggingNodeId) {
-                     return { ...n, x: proposedX, y: proposedY };
+             // 保存当前拖拽位置到 ref（用于 mouseUp 时提交）
+             dragNodeRef.current.currentX = proposedX;
+             dragNodeRef.current.currentY = proposedY;
+             dragNodeRef.current.currentDx = actualDx;
+             dragNodeRef.current.currentDy = actualDy;
+
+             // 直接操作 DOM，绕过 React 渲染 ⚡
+             const mainEl = nodeRefsMap.current.get(draggingNodeId);
+             if (mainEl) {
+                 mainEl.style.transform = `translate(${proposedX}px, ${proposedY}px)`;
+             }
+             // 同步移动其他选中节点
+             otherSelectedNodes?.forEach(on => {
+                 const el = nodeRefsMap.current.get(on.id);
+                 if (el) {
+                     el.style.transform = `translate(${on.startX + actualDx}px, ${on.startY + actualDy}px)`;
                  }
-                 // 移动其他选中的节点
-                 const otherNode = otherSelectedNodes?.find(on => on.id === n.id);
-                 if (otherNode) {
-                     return { ...n, x: otherNode.startX + actualDx, y: otherNode.startY + actualDy };
-                 }
-                 return n;
-             }));
+             });
+             // 不调用 setNodes()！
 
           } else if (draggingNodeId) {
+              // fallback: 没有 dragNodeRef 时的处理（不应该发生）
               const dx = (clientX - lastMousePos.x) / scale;
               const dy = (clientY - lastMousePos.y) / scale;
-              setNodes(prev => prev.map(n => n.id === draggingNodeId ? { ...n, x: n.x + dx, y: n.y + dy } : n));
+              const el = nodeRefsMap.current.get(draggingNodeId);
+              const node = nodesRef.current.find(n => n.id === draggingNodeId);
+              if (el && node) {
+                  el.style.transform = `translate(${node.x + dx}px, ${node.y + dy}px)`;
+              }
               setLastMousePos({ x: clientX, y: clientY });
           }
           
@@ -990,7 +1008,20 @@ export default function StudioTab() {
           setSelectionRect(null);
       }
       
-      // 拖拽结束后无需额外处理，位置已在 mouseMove 中更新
+      // 拖拽结束：一次性提交节点位置到 state ⚡
+      if (draggingNodeId && dragNodeRef.current && dragNodeRef.current.currentX !== undefined) {
+          const { currentX, currentY, currentDx, currentDy, otherSelectedNodes } = dragNodeRef.current;
+          setNodes(prev => prev.map(n => {
+              if (n.id === draggingNodeId) {
+                  return { ...n, x: currentX!, y: currentY! };
+              }
+              const otherNode = otherSelectedNodes?.find(on => on.id === n.id);
+              if (otherNode && currentDx !== undefined && currentDy !== undefined) {
+                  return { ...n, x: otherNode.startX + currentDx, y: otherNode.startY + currentDy };
+              }
+              return n;
+          }));
+      }
 
       if (draggingNodeId || resizingNodeId || dragGroupRef.current) saveHistory();
 
@@ -2208,9 +2239,10 @@ export default function StudioTab() {
                   }}
                   onDragResultToCanvas={handleDragResultToCanvas}
                   onGridDragStateChange={handleGridDragStateChange}
-                  isSelected={selectedNodeIds.includes(node.id)} 
+                  isSelected={selectedNodeIds.includes(node.id)}
                   inputAssets={node.inputs.map(i => nodes.find(n => n.id === i)).filter(n => n && (n.data.image || n.data.videoUri || n.data.croppedFrame)).slice(0, 6).map(n => ({ id: n!.id, type: (n!.data.croppedFrame || n!.data.image) ? 'image' : 'video', src: n!.data.croppedFrame || n!.data.image || n!.data.videoUri! }))}
                   onInputReorder={(nodeId, newOrder) => { const node = nodes.find(n => n.id === nodeId); if (node) { setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, inputs: newOrder } : n)); } }}
+                  nodeRef={(el) => { if (el) nodeRefsMap.current.set(node.id, el); else nodeRefsMap.current.delete(node.id); }}
                   isDragging={draggingNodeId === node.id} isResizing={resizingNodeId === node.id} isConnecting={!!connectionStart} isGroupDragging={activeGroupNodeIds.includes(node.id)}
               />
               ))}
