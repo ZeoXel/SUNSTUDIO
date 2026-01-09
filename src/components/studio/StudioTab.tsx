@@ -638,7 +638,7 @@ export default function StudioTab() {
 
       // 计算节点预估高度并找到不重叠的位置
       const nodeWidth = 420;
-      const [rw, rh] = (defaults.aspectRatio || '1:1').split(':').map(Number);
+      const [rw, rh] = (defaults.aspectRatio || '16:9').split(':').map(Number);
       const nodeHeight = type === NodeType.VIDEO_ANALYZER ? 360 :
                          type === NodeType.AUDIO_GENERATOR ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
                          type === NodeType.PROMPT_INPUT ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
@@ -1208,11 +1208,13 @@ export default function StudioTab() {
           if (node.type === NodeType.IMAGE_GENERATOR) {
                const inputImages: string[] = [];
                // 收集上游连接节点的图片
+               console.log(`[ImageGen] Node ${node.id} has ${inputs.length} upstream inputs:`, inputs.map(n => ({ id: n?.id, type: n?.type, hasImage: !!n?.data.image })));
                inputs.forEach(n => { if (n?.data.image) inputImages.push(n.data.image); });
                // 如果节点自身有图片（用户上传的参考图或之前的生成结果），也作为参考
                if (node.data.image && !inputImages.includes(node.data.image)) {
                    inputImages.unshift(node.data.image); // 优先放在最前面
                }
+               console.log(`[ImageGen] Collected ${inputImages.length} input images for model ${node.data.model}`);
 
                const isStoryboard = /分镜|storyboard|sequence|shots|frames|json/i.test(prompt);
 
@@ -1226,14 +1228,19 @@ export default function StudioTab() {
                           const COLUMNS = 3;
                           const gapX = 40; const gapY = 40;
                           const childWidth = node.width || 420;
-                          const ratio = node.data.aspectRatio || '1:1';
+                          const ratio = node.data.aspectRatio || '16:9';
                           const [rw, rh] = ratio.split(':').map(Number);
                           const childHeight = (childWidth * rh / rw); 
                           const startX = node.x + (node.width || 420) + 150;
                           const startY = node.y; 
                           const totalRows = Math.ceil(storyboard.length / COLUMNS);
-                          
-                          const usedModel = node.data.model || 'doubao-seedream-4-5-251128';
+
+                          // 验证模型是否为图片生成模型
+                          const validImageModels = ['doubao-seedream-4-5-251128', 'nano-banana', 'nano-banana-pro'];
+                          let usedModel = node.data.model || 'doubao-seedream-4-5-251128';
+                          if (!validImageModels.includes(usedModel) && !usedModel.includes('gemini')) {
+                              usedModel = 'doubao-seedream-4-5-251128';
+                          }
                           storyboard.forEach((shotPrompt, index) => {
                               const col = index % COLUMNS;
                               const row = Math.floor(index / COLUMNS);
@@ -1282,7 +1289,7 @@ export default function StudioTab() {
                   // 节点已有素材：创建新节点呈现结果（组图统一在一个节点中）
                   newNodeId = `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
                   const nodeWidth = node.width || 420;
-                  const [rw, rh] = (node.data.aspectRatio || '1:1').split(':').map(Number);
+                  const [rw, rh] = (node.data.aspectRatio || '16:9').split(':').map(Number);
                   const nodeHeight = node.height || (nodeWidth * rh / rw);
 
                   // 向右排布新节点
@@ -1316,8 +1323,14 @@ export default function StudioTab() {
               try {
                   // 获取组图数量（默认1张）
                   const imageCount = node.data.imageCount || 1;
-                  const usedModel = node.data.model || 'doubao-seedream-4-5-251128';
-                  const usedAspectRatio = node.data.aspectRatio || '1:1';
+                  // 验证模型是否为图片生成模型
+                  const validImageModels = ['doubao-seedream-4-5-251128', 'nano-banana', 'nano-banana-pro'];
+                  let usedModel = node.data.model || 'doubao-seedream-4-5-251128';
+                  if (!validImageModels.includes(usedModel) && !usedModel.includes('gemini')) {
+                      console.warn(`[ImageGen] Invalid model ${usedModel} for image generation, falling back to Seedream`);
+                      usedModel = 'doubao-seedream-4-5-251128';
+                  }
+                  const usedAspectRatio = node.data.aspectRatio || '16:9';
                   const res = await generateImageFromText(prompt, usedModel, inputImages, { aspectRatio: usedAspectRatio, resolution: node.data.resolution, count: imageCount });
 
                   if (shouldCreateNewNode && newNodeId) {
@@ -1342,7 +1355,7 @@ export default function StudioTab() {
               // 判断是否创建新节点：当且仅当节点本身已有视频时
               const shouldCreateNewNode = !!node.data.videoUri;
               const nodeWidth = node.width || 420;
-              const [rw, rh] = (node.data.aspectRatio || '1:1').split(':').map(Number);
+              const [rw, rh] = (node.data.aspectRatio || '16:9').split(':').map(Number);
               const nodeHeight = node.height || (nodeWidth * rh / rw);
 
               let factoryNodeId: string | null = null;
@@ -1391,7 +1404,7 @@ export default function StudioTab() {
               try {
                   const strategy = await getGenerationStrategy(node, inputs, prompt);
                   const usedModel = node.data.model || 'veo3.1';
-                  const usedAspectRatio = node.data.aspectRatio || '1:1';
+                  const usedAspectRatio = node.data.aspectRatio || '16:9';
 
                   const res = await generateVideo(
                       strategy.finalPrompt,
@@ -1448,7 +1461,7 @@ export default function StudioTab() {
               // 判断是否创建新节点：当且仅当节点本身已有视频时
               const shouldCreateNewNode = !!node.data.videoUri;
               const nodeWidth = node.width || 420;
-              const [rw, rh] = (node.data.aspectRatio || '1:1').split(':').map(Number);
+              const [rw, rh] = (node.data.aspectRatio || '16:9').split(':').map(Number);
               const nodeHeight = node.height || (nodeWidth * rh / rw);
 
               let newFactoryNodeId: string | null = null;
@@ -1503,7 +1516,7 @@ export default function StudioTab() {
 
                   const strategy = await getGenerationStrategy(node, inputs, prompt);
                   const usedModel = node.data.model || 'veo3.1';
-                  const usedAspectRatio = node.data.aspectRatio || '1:1';
+                  const usedAspectRatio = node.data.aspectRatio || '16:9';
 
                   const res = await generateVideo(
                       strategy.finalPrompt,
@@ -2315,11 +2328,10 @@ export default function StudioTab() {
                           left: gridDragDropPreview.canvasX,
                           top: gridDragDropPreview.canvasY,
                           width: 420,
-                          height: 236, // 16:9 比例
+                          height: 236,
                           transition: 'left 0.05s ease-out, top 0.05s ease-out',
                       }}
                   >
-                      {/* 预览内容 */}
                       <div className="absolute inset-2 rounded-[20px] overflow-hidden opacity-60">
                           {gridDragDropPreview.type === 'image' ? (
                               <img src={gridDragDropPreview.src} className="w-full h-full object-cover" />
@@ -2327,15 +2339,13 @@ export default function StudioTab() {
                               <video src={gridDragDropPreview.src} className="w-full h-full object-cover" muted />
                           )}
                       </div>
-                      {/* 中心指示器 */}
                       <div className="absolute inset-0 flex items-center justify-center">
                           <div className="w-12 h-12 rounded-full bg-cyan-500/30 border-2 border-cyan-400 flex items-center justify-center animate-pulse">
                               <Plus size={24} className="text-cyan-500" />
                           </div>
                       </div>
-                      {/* 位置标签 */}
                       <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-3 py-1 bg-cyan-500 rounded-full text-[10px] font-bold text-white whitespace-nowrap shadow-lg">
-                          新节点将在此创建
+                          松开放置
                       </div>
                   </div>
               )}
@@ -2395,7 +2405,8 @@ export default function StudioTab() {
                       const handleCreateDownstreamNode = (nodeType: NodeType, generationMode?: VideoGenerationMode) => {
                           saveHistory();
                           const nodeWidth = 420;
-                          const [rw, rh] = (sourceNode.data.aspectRatio || '1:1').split(':').map(Number);
+                          // 新节点始终使用 16:9 默认比例
+                          const [rw, rh] = [16, 9];
                           // CUT 模式需要额外高度显示时间轴
                           const extraHeight = (nodeType === NodeType.VIDEO_FACTORY && generationMode === 'CUT') ? 36 : 0;
                           const nodeHeight = nodeType === NodeType.VIDEO_ANALYZER ? 360 : (nodeWidth * rh / rw) + extraHeight;
@@ -2442,7 +2453,7 @@ export default function StudioTab() {
                               status: NodeStatus.IDLE,
                               data: {
                                   model: defaultModel,
-                                  aspectRatio: sourceNode.data.aspectRatio || '1:1',
+                                  aspectRatio: '16:9', // 新节点始终使用 16:9
                                   ...(generationMode && { generationMode }), // 设置预选的生成模式
                               },
                               inputs: [sourceNode.id]

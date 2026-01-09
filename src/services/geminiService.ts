@@ -393,6 +393,10 @@ export const generateImageFromText = async (
         if (modelType === 'seedream') {
             // Seedream：单次请求，通过提示词和 sequential_image_generation 控制数量
             try {
+                console.log(`[Seedream Client] Generating with ${inputImages.length} input images`);
+                if (inputImages.length > 0) {
+                    console.log(`[Seedream Client] First image type: ${inputImages[0]?.substring(0, 30)}...`);
+                }
                 const response = await fetch('/api/studio/image', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -457,6 +461,11 @@ export const generateImageFromText = async (
                 console.error(`[nano-banana] Image Gen Error:`, e);
                 throw new Error(getErrorMessage(e));
             }
+        }
+
+        // Veo 和 Seedance 是视频模型，不能用于图片生成
+        if (modelType === 'veo' || modelType === 'seedance') {
+            throw new Error(`模型 ${model} 是视频生成模型，不能用于图片生成。请选择 Seedream 或 Nano-banana 模型。`);
         }
     }
 

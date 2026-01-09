@@ -37,6 +37,22 @@ const SEEDREAM_SIZE_MAP: Record<string, string> = {
     '9:16': '1440x2560',
 };
 
+// 规范化 Base64 图片格式 (Seedream 要求小写 MIME 类型)
+const normalizeBase64Image = (image: string): string => {
+    if (!image) return image;
+    // 如果是 URL，直接返回
+    if (image.startsWith('http://') || image.startsWith('https://')) return image;
+    // 规范化 data URL 格式，确保 MIME 类型小写
+    // data:image/PNG;base64,... -> data:image/png;base64,...
+    const match = image.match(/^data:image\/([^;]+);base64,(.+)$/i);
+    if (match) {
+        const format = match[1].toLowerCase();
+        const data = match[2];
+        return `data:image/${format};base64,${data}`;
+    }
+    return image;
+};
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
@@ -61,7 +77,13 @@ export async function POST(request: NextRequest) {
 
         if (modelType === 'seedream') {
             // Seedream 特定参数 - 将比例转换为尺寸
-            if (images && images.length > 0) requestBody.image = images;
+            if (images && images.length > 0) {
+                // 规范化所有图片的 Base64 格式 (Seedream 要求小写 MIME 类型)
+                const normalizedImages = images.map(normalizeBase64Image);
+                requestBody.image = normalizedImages;
+                console.log(`[Seedream] Image-to-image mode with ${normalizedImages.length} reference image(s)`);
+                console.log(`[Seedream] First image prefix: ${normalizedImages[0]?.substring(0, 50)}...`);
+            }
             // 优先使用 aspectRatio 映射，其次用 size
             const seedreamSize = aspectRatio ? SEEDREAM_SIZE_MAP[aspectRatio] : size;
             if (seedreamSize) requestBody.size = seedreamSize;

@@ -374,6 +374,7 @@ const NodeComponent: React.FC<NodeProps> = ({
 }) => {
     const isWorking = node.status === NodeStatus.WORKING;
     const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | HTMLAudioElement | null>(null);
+    const upstreamVideoRef = useRef<HTMLVideoElement | null>(null); // 上游视频 ref（用于局部分镜截取）
     const playPromiseRef = useRef<Promise<void> | null>(null);
     const isHoveringRef = useRef(false);
     const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
@@ -393,18 +394,12 @@ const NodeComponent: React.FC<NodeProps> = ({
     const inputStartDragY = useRef(0);
     const inputStartHeight = useRef(0);
 
-    // 组图宫格拖拽状态 - 使用 ref 实现流畅的实时更新
+    // 组图宫格拖拽状态
     const [gridDragState, setGridDragState] = useState<{
         isDragging: boolean;
         src: string;
         type: 'image' | 'video';
-        startX: number;
-        startY: number;
-        currentX: number;
-        currentY: number;
     } | null>(null);
-    const gridDragPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-    const ghostElementRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { setLocalPrompt(node.data.prompt || ''); }, [node.data.prompt]);
     const commitPrompt = () => { if (localPrompt !== (node.data.prompt || '')) onUpdate(node.id, { prompt: localPrompt }); };
@@ -620,13 +615,14 @@ const NodeComponent: React.FC<NodeProps> = ({
     };
     const handleAspectRatioSelect = (newRatio: string) => {
         const [w, h] = newRatio.split(':').map(Number);
-        let newSize: { width?: number, height?: number } = { height: undefined };
         if (w && h) {
-            const currentWidth = node.width || DEFAULT_NODE_WIDTH;
-            const projectedHeight = (currentWidth * h) / w;
-            if (projectedHeight > 600) newSize.width = (600 * w) / h;
+            // 使用默认宽度 420 作为基准，保持节点尺寸一致
+            const newWidth = DEFAULT_NODE_WIDTH;
+            const newHeight = (DEFAULT_NODE_WIDTH * h) / w;
+            onUpdate(node.id, { aspectRatio: newRatio }, { width: newWidth, height: newHeight });
+        } else {
+            onUpdate(node.id, { aspectRatio: newRatio });
         }
-        onUpdate(node.id, { aspectRatio: newRatio }, newSize);
     };
     const handleTitleSave = () => { setIsEditingTitle(false); if (tempTitle.trim() && tempTitle !== node.title) onUpdate(node.id, {}, undefined, tempTitle); else setTempTitle(node.title); };
 
@@ -656,7 +652,7 @@ const NodeComponent: React.FC<NodeProps> = ({
             const [w, h] = ratio.split(':').map(Number);
             return (node.width || DEFAULT_NODE_WIDTH) * h / w;
         }
-        const ratio = node.data.aspectRatio || '1:1';
+        const ratio = node.data.aspectRatio || '16:9';
         const [w, h] = ratio.split(':').map(Number);
         const extra = (node.type === NodeType.VIDEO_FACTORY && generationMode === 'CUT') ? 36 : 0;
         return ((node.width || DEFAULT_NODE_WIDTH) * h / w) + extra;
@@ -768,7 +764,25 @@ const NodeComponent: React.FC<NodeProps> = ({
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     const base64 = ev.target?.result as string;
-                    onUpdate(node.id, { image: base64 });
+                    // 读取图片尺寸并自适应节点大小
+                    const img = new window.Image();
+                    img.onload = () => {
+                        const imgWidth = img.width;
+                        const imgHeight = img.height;
+                        // 计算最接近的标准比例
+                        const ratio = imgWidth / imgHeight;
+                        let aspectRatio = '1:1';
+                        if (ratio > 1.6) aspectRatio = '16:9';
+                        else if (ratio > 1.2) aspectRatio = '4:3';
+                        else if (ratio < 0.625) aspectRatio = '9:16';
+                        else if (ratio < 0.83) aspectRatio = '3:4';
+                        // 计算节点尺寸，使用默认宽度 420 保持一致
+                        const newWidth = DEFAULT_NODE_WIDTH;
+                        const newHeight = DEFAULT_NODE_WIDTH * imgHeight / imgWidth;
+                        // 更新节点数据和尺寸
+                        onUpdate(node.id, { image: base64, aspectRatio }, { width: newWidth, height: newHeight });
+                    };
+                    img.src = base64;
                 };
                 reader.readAsDataURL(file);
             };
@@ -777,7 +791,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                     {!hasImage ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <div
-                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all duration-300"
+                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all duration-300 select-none"
                                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
@@ -823,7 +837,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                     {!hasVideo ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <div
-                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all duration-300"
+                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all duration-300 select-none"
                                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
@@ -949,13 +963,89 @@ const NodeComponent: React.FC<NodeProps> = ({
                 {!hasContent ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
                         {node.type === NodeType.VIDEO_FACTORY && generationMode === 'CUT' ? (
-                            // 局部分镜模式：提示在上游截取分镜帧
-                            <>
-                                <div className="w-20 h-20 rounded-[28px] bg-orange-50 border border-orange-200 flex items-center justify-center">
-                                    {isWorking ? <Loader2 className="animate-spin text-orange-500" size={32} /> : <Scissors size={32} className="text-orange-400" />}
-                                </div>
-                                <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-orange-500">{isWorking ? "处理中..." : "在上游视频截取分镜帧"}</span>
-                            </>
+                            // 局部分镜模式：显示上游视频并提供截取功能
+                            (() => {
+                                const upstreamVideo = inputAssets?.find(a => a.type === 'video');
+                                if (upstreamVideo) {
+                                    // 有上游视频：全屏显示并提供帧选择功能
+                                    // 步骤1: 拖动选择帧位置  步骤2: 点击底部按钮截取
+                                    const handleSeekStart = (e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        const container = e.currentTarget as HTMLElement;
+                                        const containerRect = container.getBoundingClientRect();
+
+                                        const seekToPosition = (clientX: number) => {
+                                            const vid = upstreamVideoRef.current;
+                                            if (!vid || !Number.isFinite(vid.duration)) return;
+                                            const per = Math.max(0, Math.min((clientX - containerRect.left) / containerRect.width, 1));
+                                            vid.currentTime = vid.duration * per;
+                                        };
+
+                                        // 初始定位
+                                        seekToPosition(e.clientX);
+
+                                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                                            seekToPosition(moveEvent.clientX);
+                                        };
+
+                                        const handleMouseUp = () => {
+                                            // 释放时仅停止拖动，不截取
+                                            window.removeEventListener('mousemove', handleMouseMove);
+                                            window.removeEventListener('mouseup', handleMouseUp);
+                                        };
+
+                                        window.addEventListener('mousemove', handleMouseMove);
+                                        window.addEventListener('mouseup', handleMouseUp);
+                                    };
+
+                                    const handleCropClick = (e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        const vid = upstreamVideoRef.current;
+                                        if (vid && vid.videoWidth > 0) {
+                                            const canvas = document.createElement('canvas');
+                                            canvas.width = vid.videoWidth;
+                                            canvas.height = vid.videoHeight;
+                                            const ctx = canvas.getContext('2d');
+                                            if (ctx) {
+                                                ctx.drawImage(vid, 0, 0);
+                                                onCrop?.(node.id, canvas.toDataURL('image/png'));
+                                            }
+                                        }
+                                    };
+
+                                    return (
+                                        <div className="absolute inset-0">
+                                            <SecureVideo
+                                                videoRef={upstreamVideoRef}
+                                                src={upstreamVideo.src}
+                                                className="w-full h-full object-cover bg-white pointer-events-none"
+                                                muted
+                                            />
+                                            {/* 交互层：拖动选择帧 */}
+                                            <div
+                                                className="absolute inset-x-0 top-0 bottom-9 cursor-ew-resize z-10"
+                                                onMouseDown={handleSeekStart}
+                                            />
+                                            {/* 底部截取按钮 */}
+                                            <div
+                                                className="absolute bottom-0 left-0 right-0 h-9 bg-slate-700/90 backdrop-blur-sm flex items-center justify-center z-20 cursor-pointer hover:bg-slate-600/90 transition-colors"
+                                                onClick={handleCropClick}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                                <span className="text-[10px] text-white font-medium tracking-wide">点击截取当前帧</span>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                // 无上游视频：显示提示
+                                return (
+                                    <>
+                                        {isWorking ? <Loader2 className="animate-spin text-green-500" size={36} /> : <Scissors size={36} className="text-green-400/60" />}
+                                        <span className="text-[11px] font-medium text-green-500">{isWorking ? "处理中..." : "连接上游视频节点"}</span>
+                                    </>
+                                );
+                            })()
                         ) : (
                             // 生成节点空状态：仅图标+提示文本
                             <>
@@ -1429,7 +1519,7 @@ const NodeComponent: React.FC<NodeProps> = ({
             {/* 组图宫格 - 始终渲染，CSS控制显隐，支持拖拽到画布 */}
             {hasGrid && (
                 <div
-                    className="absolute bg-white rounded-[24px] shadow-2xl transition-all duration-200"
+                    className="absolute bg-white rounded-[24px] shadow-2xl transition-all duration-200 select-none"
                     style={{
                         left: 0, top: 0,
                         transform: `translate(${node.x}px, ${node.y}px)`,
@@ -1447,44 +1537,40 @@ const NodeComponent: React.FC<NodeProps> = ({
                     >
                         <X size={14} className="text-white" />
                     </button>
-                    {/* 拖拽提示 */}
+                    {/* 操作提示 */}
                     <div className="absolute top-3 left-3 z-10 px-2 py-1 bg-black/50 rounded-lg text-[10px] text-white/80 font-medium">
-                        点击选择 · 拖拽创建副本
+                        点击选择 · ⌘/Ctrl+拖拽复制
                     </div>
                     <div className="w-full h-full grid grid-cols-2" style={{ gap }}>
                         {node.data.images ? node.data.images.map((img, idx) => {
                             const isSelected = img === node.data.image;
                             const handleGridItemMouseDown = (e: React.MouseEvent) => {
+                                // 仅 Ctrl/Cmd + 拖拽 触发复制功能
+                                const isCopyDrag = e.ctrlKey || e.metaKey;
+
+                                if (!isCopyDrag) {
+                                    // 普通点击：选择该项
+                                    e.stopPropagation();
+                                    onUpdate(node.id, { image: img });
+                                    setShowImageGrid(false);
+                                    return;
+                                }
+
+                                // Ctrl/Cmd + 拖拽：复制到画布
                                 e.stopPropagation();
                                 e.preventDefault();
                                 const startX = e.clientX;
                                 const startY = e.clientY;
                                 let hasMoved = false;
-                                let rafId: number | null = null;
 
                                 const handleMouseMove = (moveEvent: MouseEvent) => {
                                     const dx = Math.abs(moveEvent.clientX - startX);
                                     const dy = Math.abs(moveEvent.clientY - startY);
 
-                                    // 使用 RAF 更新 ghost 位置，确保流畅
-                                    gridDragPosRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
-                                    if (ghostElementRef.current) {
-                                        ghostElementRef.current.style.left = `${moveEvent.clientX - 100}px`;
-                                        ghostElementRef.current.style.top = `${moveEvent.clientY - 60}px`;
-                                    }
-
                                     if (dx > 5 || dy > 5) {
                                         if (!hasMoved) {
                                             hasMoved = true;
-                                            setGridDragState({
-                                                isDragging: true,
-                                                src: img,
-                                                type: 'image',
-                                                startX,
-                                                startY,
-                                                currentX: moveEvent.clientX,
-                                                currentY: moveEvent.clientY,
-                                            });
+                                            setGridDragState({ isDragging: true, src: img, type: 'image' });
                                         }
                                         // 通知父组件拖拽位置变化（用于显示放置预览）
                                         onGridDragStateChange?.({
@@ -1501,7 +1587,6 @@ const NodeComponent: React.FC<NodeProps> = ({
                                     window.removeEventListener('mousemove', handleMouseMove);
                                     window.removeEventListener('mouseup', handleMouseUp);
                                     document.body.style.cursor = '';
-                                    if (rafId) cancelAnimationFrame(rafId);
 
                                     // 通知父组件拖拽结束
                                     onGridDragStateChange?.(null);
@@ -1510,15 +1595,11 @@ const NodeComponent: React.FC<NodeProps> = ({
                                         // 拖拽到画布创建新节点
                                         onDragResultToCanvas(node.id, 'image', img, upEvent.clientX, upEvent.clientY);
                                         setShowImageGrid(false);
-                                    } else if (!hasMoved) {
-                                        // 点击选择
-                                        onUpdate(node.id, { image: img });
-                                        setShowImageGrid(false);
                                     }
                                     setGridDragState(null);
                                 };
 
-                                document.body.style.cursor = 'grabbing';
+                                document.body.style.cursor = 'copy';
                                 window.addEventListener('mousemove', handleMouseMove);
                                 window.addEventListener('mouseup', handleMouseUp);
                             };
@@ -1526,7 +1607,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                             return (
                                 <div
                                     key={idx}
-                                    className={`relative overflow-hidden cursor-grab active:cursor-grabbing rounded-[20px] ${isSelected ? 'ring-4 ring-blue-500 ring-inset' : 'hover:brightness-95 hover:ring-2 hover:ring-cyan-400'} transition-all group/item`}
+                                    className={`relative overflow-hidden cursor-pointer rounded-[20px] ${isSelected ? 'ring-4 ring-blue-500 ring-inset' : 'hover:brightness-95 hover:ring-2 hover:ring-cyan-400'} transition-all group/item`}
                                     style={{ width: nodeWidth, height: nodeHeight }}
                                     onMouseDown={handleGridItemMouseDown}
                                 >
@@ -1536,46 +1617,42 @@ const NodeComponent: React.FC<NodeProps> = ({
                                             <CheckCircle size={12} className="text-white" />
                                         </div>
                                     )}
-                                    {/* 拖拽指示器 */}
+                                    {/* 复制提示 */}
                                     <div className="absolute bottom-2 right-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded-lg flex items-center gap-1">
-                                        <GripHorizontal size={12} className="text-white" />
-                                        <span className="text-[9px] text-white font-medium">拖拽</span>
+                                        <Copy size={10} className="text-white" />
+                                        <span className="text-[9px] text-white font-medium">⌘+拖拽复制</span>
                                     </div>
                                 </div>
                             );
                         }) : node.data.videoUris?.map((uri, idx) => {
                             const isSelected = uri === node.data.videoUri;
                             const handleGridItemMouseDown = (e: React.MouseEvent) => {
+                                // 仅 Ctrl/Cmd + 拖拽 触发复制功能
+                                const isCopyDrag = e.ctrlKey || e.metaKey;
+
+                                if (!isCopyDrag) {
+                                    // 普通点击：选择该项
+                                    e.stopPropagation();
+                                    onUpdate(node.id, { videoUri: uri });
+                                    setShowImageGrid(false);
+                                    return;
+                                }
+
+                                // Ctrl/Cmd + 拖拽：复制到画布
                                 e.stopPropagation();
                                 e.preventDefault();
                                 const startX = e.clientX;
                                 const startY = e.clientY;
                                 let hasMoved = false;
-                                let rafId: number | null = null;
 
                                 const handleMouseMove = (moveEvent: MouseEvent) => {
                                     const dx = Math.abs(moveEvent.clientX - startX);
                                     const dy = Math.abs(moveEvent.clientY - startY);
 
-                                    // 使用 RAF 更新 ghost 位置，确保流畅
-                                    gridDragPosRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
-                                    if (ghostElementRef.current) {
-                                        ghostElementRef.current.style.left = `${moveEvent.clientX - 100}px`;
-                                        ghostElementRef.current.style.top = `${moveEvent.clientY - 60}px`;
-                                    }
-
                                     if (dx > 5 || dy > 5) {
                                         if (!hasMoved) {
                                             hasMoved = true;
-                                            setGridDragState({
-                                                isDragging: true,
-                                                src: uri,
-                                                type: 'video',
-                                                startX,
-                                                startY,
-                                                currentX: moveEvent.clientX,
-                                                currentY: moveEvent.clientY,
-                                            });
+                                            setGridDragState({ isDragging: true, src: uri, type: 'video' });
                                         }
                                         // 通知父组件拖拽位置变化（用于显示放置预览）
                                         onGridDragStateChange?.({
@@ -1592,7 +1669,6 @@ const NodeComponent: React.FC<NodeProps> = ({
                                     window.removeEventListener('mousemove', handleMouseMove);
                                     window.removeEventListener('mouseup', handleMouseUp);
                                     document.body.style.cursor = '';
-                                    if (rafId) cancelAnimationFrame(rafId);
 
                                     // 通知父组件拖拽结束
                                     onGridDragStateChange?.(null);
@@ -1601,15 +1677,11 @@ const NodeComponent: React.FC<NodeProps> = ({
                                         // 拖拽到画布创建新节点
                                         onDragResultToCanvas(node.id, 'video', uri, upEvent.clientX, upEvent.clientY);
                                         setShowImageGrid(false);
-                                    } else if (!hasMoved) {
-                                        // 点击选择
-                                        onUpdate(node.id, { videoUri: uri });
-                                        setShowImageGrid(false);
                                     }
                                     setGridDragState(null);
                                 };
 
-                                document.body.style.cursor = 'grabbing';
+                                document.body.style.cursor = 'copy';
                                 window.addEventListener('mousemove', handleMouseMove);
                                 window.addEventListener('mouseup', handleMouseUp);
                             };
@@ -1617,7 +1689,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                             return (
                                 <div
                                     key={idx}
-                                    className={`relative overflow-hidden cursor-grab active:cursor-grabbing rounded-[20px] ${isSelected ? 'ring-4 ring-blue-500 ring-inset' : 'hover:brightness-95 hover:ring-2 hover:ring-cyan-400'} transition-all group/item`}
+                                    className={`relative overflow-hidden cursor-pointer rounded-[20px] ${isSelected ? 'ring-4 ring-blue-500 ring-inset' : 'hover:brightness-95 hover:ring-2 hover:ring-cyan-400'} transition-all group/item`}
                                     style={{ width: nodeWidth, height: nodeHeight }}
                                     onMouseDown={handleGridItemMouseDown}
                                 >
@@ -1627,41 +1699,14 @@ const NodeComponent: React.FC<NodeProps> = ({
                                             <CheckCircle size={12} className="text-white" />
                                         </div>
                                     )}
-                                    {/* 拖拽指示器 */}
+                                    {/* 复制提示 */}
                                     <div className="absolute bottom-2 right-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded-lg flex items-center gap-1">
-                                        <GripHorizontal size={12} className="text-white" />
-                                        <span className="text-[9px] text-white font-medium">拖拽</span>
+                                        <Copy size={10} className="text-white" />
+                                        <span className="text-[9px] text-white font-medium">⌘+拖拽复制</span>
                                     </div>
                                 </div>
                             );
                         })}
-                    </div>
-                </div>
-            )}
-            {/* 拖拽预览层 - 跟随鼠标的ghost元素 */}
-            {gridDragState?.isDragging && (
-                <div
-                    ref={ghostElementRef}
-                    className="fixed pointer-events-none z-[9999] rounded-[20px] shadow-2xl overflow-hidden ring-2 ring-cyan-400 animate-pulse"
-                    style={{
-                        left: gridDragState.currentX - 100,
-                        top: gridDragState.currentY - 60,
-                        width: 200,
-                        height: 120,
-                        transform: 'scale(1.05)',
-                        transition: 'transform 0.15s ease-out',
-                    }}
-                >
-                    {gridDragState.type === 'image' ? (
-                        <img src={gridDragState.src} className="w-full h-full object-cover" draggable={false} />
-                    ) : (
-                        <SecureVideo src={gridDragState.src} className="w-full h-full object-cover bg-white" muted />
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-cyan-500/30 via-transparent to-transparent" />
-                    <div className="absolute inset-0 ring-2 ring-inset ring-white/30 rounded-[20px]" />
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-center gap-1.5 bg-black/60 backdrop-blur-sm rounded-lg py-1.5 px-2">
-                        <div className="w-2 h-2 bg-cyan-400 rounded-full animate-ping" />
-                        <span className="text-[10px] text-white font-bold tracking-wide">松开放置</span>
                     </div>
                 </div>
             )}
