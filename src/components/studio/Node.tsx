@@ -43,6 +43,7 @@ interface NodeProps {
     isSelected?: boolean;
     isResizing?: boolean;
     isConnecting?: boolean;
+    zoom?: number;
 }
 
 const IMAGE_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'];
@@ -106,7 +107,7 @@ const getImageModelConfig = (model: string) => {
         defaultAspectRatio: '1:1',
     };
 };
-const GLASS_PANEL = "bg-[#ffffff]/95 backdrop-blur-2xl border border-slate-300 shadow-2xl";
+const GLASS_PANEL = "bg-[#ffffff]/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-300 dark:border-slate-700 shadow-2xl";
 const DEFAULT_NODE_WIDTH = 420;
 const DEFAULT_FIXED_HEIGHT = 360;
 const AUDIO_NODE_HEIGHT = Math.round(DEFAULT_NODE_WIDTH * 9 / 16); // 16:9 比例 = 236
@@ -242,7 +243,8 @@ const arePropsEqual = (prev: NodeProps, next: NodeProps) => {
         prev.isResizing !== next.isResizing ||
         prev.isSelected !== next.isSelected ||
         prev.isGroupDragging !== next.isGroupDragging ||
-        prev.isConnecting !== next.isConnecting) {
+        prev.isConnecting !== next.isConnecting ||
+        prev.zoom !== next.zoom) {
         return false;
     }
     if (prev.node !== next.node) return false;
@@ -380,8 +382,9 @@ const AudioVisualizer = ({ isPlaying }: { isPlaying: boolean }) => (
 );
 
 const NodeComponent: React.FC<NodeProps> = ({
-    node, onUpdate, onAction, onDelete, onExpand, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting
+    node, onUpdate, onAction, onDelete, onExpand, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
 }) => {
+    const inverseScale = 1 / Math.max(0.1, zoom);
     const isWorking = node.status === NodeStatus.WORKING;
     const mediaRef = useRef<HTMLImageElement | HTMLVideoElement | HTMLAudioElement | null>(null);
     const playPromiseRef = useRef<Promise<void> | null>(null);
@@ -569,11 +572,11 @@ const NodeComponent: React.FC<NodeProps> = ({
                     const ratioH = h / divisor;
                     // 简化常见比例
                     let aspectRatio = `${ratioW}:${ratioH}`;
-                    if (Math.abs(w/h - 16/9) < 0.1) aspectRatio = '16:9';
-                    else if (Math.abs(w/h - 9/16) < 0.1) aspectRatio = '9:16';
-                    else if (Math.abs(w/h - 1) < 0.1) aspectRatio = '1:1';
-                    else if (Math.abs(w/h - 4/3) < 0.1) aspectRatio = '4:3';
-                    else if (Math.abs(w/h - 3/4) < 0.1) aspectRatio = '3:4';
+                    if (Math.abs(w / h - 16 / 9) < 0.1) aspectRatio = '16:9';
+                    else if (Math.abs(w / h - 9 / 16) < 0.1) aspectRatio = '9:16';
+                    else if (Math.abs(w / h - 1) < 0.1) aspectRatio = '1:1';
+                    else if (Math.abs(w / h - 4 / 3) < 0.1) aspectRatio = '4:3';
+                    else if (Math.abs(w / h - 3 / 4) < 0.1) aspectRatio = '3:4';
 
                     const nodeWidth = node.width || DEFAULT_NODE_WIDTH;
                     const [rw, rh] = aspectRatio.split(':').map(Number);
@@ -604,11 +607,11 @@ const NodeComponent: React.FC<NodeProps> = ({
                     const ratioH = h / divisor;
                     // 简化常见比例
                     let aspectRatio = `${ratioW}:${ratioH}`;
-                    if (Math.abs(w/h - 16/9) < 0.1) aspectRatio = '16:9';
-                    else if (Math.abs(w/h - 9/16) < 0.1) aspectRatio = '9:16';
-                    else if (Math.abs(w/h - 1) < 0.1) aspectRatio = '1:1';
-                    else if (Math.abs(w/h - 4/3) < 0.1) aspectRatio = '4:3';
-                    else if (Math.abs(w/h - 3/4) < 0.1) aspectRatio = '3:4';
+                    if (Math.abs(w / h - 16 / 9) < 0.1) aspectRatio = '16:9';
+                    else if (Math.abs(w / h - 9 / 16) < 0.1) aspectRatio = '9:16';
+                    else if (Math.abs(w / h - 1) < 0.1) aspectRatio = '1:1';
+                    else if (Math.abs(w / h - 4 / 3) < 0.1) aspectRatio = '4:3';
+                    else if (Math.abs(w / h - 3 / 4) < 0.1) aspectRatio = '3:4';
 
                     const nodeWidth = node.width || DEFAULT_NODE_WIDTH;
                     const [rw, rh] = aspectRatio.split(':').map(Number);
@@ -686,9 +689,9 @@ const NodeComponent: React.FC<NodeProps> = ({
                     {isWorking && <div className="bg-[#ffffff]/90 backdrop-blur-md p-1.5 rounded-full border border-slate-300"><Loader2 className="animate-spin w-3 h-3 text-blue-400" /></div>}
                     <div className={`px-2 py-1 flex items-center gap-2`}>
                         {isEditingTitle ? (
-                            <input className="bg-transparent border-none outline-none text-slate-600 text-[10px] font-bold uppercase tracking-wider w-24 text-right" value={tempTitle} onChange={(e) => setTempTitle(e.target.value)} onBlur={handleTitleSave} onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()} onMouseDown={e => e.stopPropagation()} autoFocus />
+                            <input className="bg-transparent border-none outline-none text-slate-600 dark:text-slate-300 text-[10px] font-bold uppercase tracking-wider w-24 text-right" value={tempTitle} onChange={(e) => setTempTitle(e.target.value)} onBlur={handleTitleSave} onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()} onMouseDown={e => e.stopPropagation()} autoFocus />
                         ) : (
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-700 cursor-text text-right" onClick={() => setIsEditingTitle(true)}>{node.title}</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 hover:text-slate-700 dark:hover:text-slate-100 cursor-text text-right" onClick={() => setIsEditingTitle(true)}>{node.title}</span>
                         )}
                     </div>
                 </div>
@@ -702,10 +705,10 @@ const NodeComponent: React.FC<NodeProps> = ({
             const hasContent = localPrompt && localPrompt.trim().length > 0;
             return (
                 <div className="w-full h-full p-3 flex flex-col gap-2 group/text">
-                    {/* 统一的文本编辑区 - 浅灰边框 */}
-                    <div className="flex-1 bg-white rounded-[16px] border border-slate-300 relative overflow-hidden hover:border-slate-400 focus-within:border-slate-400 transition-colors">
+                    {/* 统一的文本编辑区 - 黄色主题 & 暗色模式 */}
+                    <div className="flex-1 bg-amber-50/50 dark:bg-amber-900/10 rounded-[16px] border border-amber-200/50 dark:border-amber-700/30 relative overflow-hidden hover:border-amber-300 dark:hover:border-amber-600 focus-within:border-amber-400 dark:focus-within:border-amber-500 transition-colors">
                         <textarea
-                            className="w-full h-full bg-transparent resize-none focus:outline-none text-xs text-slate-700 placeholder-slate-500/60 p-3 font-medium leading-relaxed custom-scrollbar"
+                            className="w-full h-full bg-transparent resize-none focus:outline-none text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400/60 dark:placeholder-slate-500/60 p-3 font-medium leading-relaxed custom-scrollbar"
                             placeholder="在此输入或编辑您的提示词...&#10;&#10;可以直接手动编辑，也可以输入简短想法后点击下方「AI 优化」按钮让 AI 帮您扩写润色。"
                             value={localPrompt}
                             onChange={(e) => setLocalPrompt(e.target.value)}
@@ -723,7 +726,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                         {/* 右上角复制按钮 */}
                         {hasContent && (
                             <button
-                                className="absolute top-2 right-2 p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-all opacity-0 group-hover/text:opacity-100"
+                                className="absolute top-2 right-2 p-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all opacity-0 group-hover/text:opacity-100"
                                 onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(localPrompt); }}
                                 title="复制内容"
                             >
@@ -733,19 +736,18 @@ const NodeComponent: React.FC<NodeProps> = ({
                     </div>
                     {/* 底部操作栏 */}
                     <div className="flex items-center justify-between px-2 py-1">
-                        <span className="text-[10px] text-slate-500 font-bold">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
                             {localPrompt.length > 0 ? `${localPrompt.length} 字` : ''}
                         </span>
                         <button
                             onClick={handleActionClick}
                             disabled={isWorking || !hasContent}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-[12px] font-bold text-[10px] tracking-wide transition-all duration-300 ${
-                                isWorking
-                                    ? 'bg-slate-50 text-slate-500 cursor-not-allowed'
-                                    : hasContent
-                                        ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black hover:shadow-lg hover:shadow-amber-500/20 hover:scale-105 active:scale-95'
-                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            }`}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-[12px] font-bold text-[10px] tracking-wide transition-all duration-300 ${isWorking
+                                ? 'bg-slate-50 text-slate-500 cursor-not-allowed'
+                                : hasContent
+                                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black hover:shadow-lg hover:shadow-amber-500/20 hover:scale-105 active:scale-95'
+                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                }`}
                         >
                             {isWorking ? <Loader2 className="animate-spin" size={12} /> : <Wand2 size={12} />}
                             <span>{isWorking ? '优化中...' : 'AI 优化'}</span>
@@ -796,16 +798,18 @@ const NodeComponent: React.FC<NodeProps> = ({
                 reader.readAsDataURL(file);
             };
             return (
-                <div className="w-full h-full relative group/asset overflow-hidden bg-white" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+                <div className="w-full h-full relative group/asset overflow-hidden bg-white dark:bg-slate-800" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
                     {!hasImage ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-blue-50/30 dark:bg-blue-900/10 group-hover/asset:bg-blue-50/50 dark:group-hover/asset:bg-blue-900/20 transition-colors">
                             <div
-                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all duration-300 select-none"
+                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-blue-100/50 dark:hover:bg-blue-800/30 transition-all duration-300 select-none scale-100 hover:scale-105 active:scale-95"
                                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
-                                <ImageIcon size={32} className="text-blue-400/60" />
-                                <span className="text-sm font-bold text-blue-500">上传图片</span>
+                                <div className="p-4 bg-white dark:bg-slate-800 rounded-full shadow-sm ring-1 ring-blue-100 dark:ring-blue-800 mb-1 group-hover/asset:shadow-md transition-shadow">
+                                    <ImageIcon size={24} className="text-blue-500 dark:text-blue-400" />
+                                </div>
+                                <span className="text-xs font-bold text-blue-600 dark:text-blue-300 tracking-wide">上传图片</span>
                             </div>
                             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                         </div>
@@ -842,16 +846,18 @@ const NodeComponent: React.FC<NodeProps> = ({
                 onUpdate(node.id, { videoUri: url });
             };
             return (
-                <div className="w-full h-full relative group/asset overflow-hidden bg-white" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+                <div className="w-full h-full relative group/asset overflow-hidden bg-white dark:bg-slate-800" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
                     {!hasVideo ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-emerald-50/30 dark:bg-emerald-900/10 group-hover/asset:bg-emerald-50/50 dark:group-hover/asset:bg-emerald-900/20 transition-colors">
                             <div
-                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all duration-300 select-none"
+                                className="flex flex-col items-center justify-center gap-3 px-8 py-6 rounded-2xl cursor-pointer hover:bg-emerald-100/50 dark:hover:bg-emerald-800/30 transition-all duration-300 select-none scale-100 hover:scale-105 active:scale-95"
                                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
-                                <VideoIcon size={32} className="text-green-400/60" />
-                                <span className="text-sm font-bold text-green-500">上传视频</span>
+                                <div className="p-4 bg-white dark:bg-slate-800 rounded-full shadow-sm ring-1 ring-emerald-100 dark:ring-emerald-800 mb-1 group-hover/asset:shadow-md transition-shadow">
+                                    <VideoIcon size={24} className="text-emerald-500 dark:text-emerald-400" />
+                                </div>
+                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-300 tracking-wide">上传视频</span>
                             </div>
                             <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={handleVideoUpload} />
                         </div>
@@ -882,16 +888,16 @@ const NodeComponent: React.FC<NodeProps> = ({
         if (node.type === NodeType.VIDEO_ANALYZER) {
             return (
                 <div className="w-full h-full p-5 flex flex-col gap-3">
-                    <div className="relative w-full h-32 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center cursor-pointer hover:bg-slate-200 transition-colors group/upload" onClick={() => !node.data.videoUri && fileInputRef.current?.click()}>
+                    <div className="relative w-full h-32 rounded-xl bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 overflow-hidden flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors group/upload" onClick={() => !node.data.videoUri && fileInputRef.current?.click()}>
                         {videoBlobUrl ? <video src={videoBlobUrl} className="w-full h-full object-cover opacity-80" muted onMouseEnter={safePlay} onMouseLeave={safePause} onClick={handleExpand} /> : <div className="flex flex-col items-center gap-2 text-green-500 group-hover:upload:text-green-600"><Upload size={20} /><span className="text-[10px] font-bold uppercase tracking-wider">上传视频</span></div>}
-                        {node.data.videoUri && <button className="absolute top-2 right-2 p-1 bg-white/80 rounded-full text-slate-600 hover:text-slate-900 backdrop-blur-md" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}><Edit size={10} /></button>}
+                        {node.data.videoUri && <button className="absolute top-2 right-2 p-1 bg-white/80 dark:bg-black/50 rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white backdrop-blur-md" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}><Edit size={10} /></button>}
                         <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={handleUploadVideo} />
                     </div>
-                    <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden relative group/analysis">
-                        <textarea className="w-full h-full bg-transparent p-3 resize-none focus:outline-none text-xs text-slate-600 font-mono leading-relaxed custom-scrollbar select-text placeholder:italic placeholder:text-slate-600" value={node.data.analysis || ''} placeholder="等待分析结果，或在此粘贴文本..." onChange={(e) => onUpdate(node.id, { analysis: e.target.value })} onWheel={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} spellCheck={false} />
-                        {node.data.analysis && <button className="absolute top-2 right-2 p-1.5 bg-white/90 hover:bg-white/90 border border-slate-300 rounded-md text-slate-600 hover:text-slate-900 transition-all opacity-0 group-hover/analysis:opacity-100 backdrop-blur-md z-10" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(node.data.analysis || ''); }} title="复制全部"><Copy size={12} /></button>}
+                    <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-600 overflow-hidden relative group/analysis">
+                        <textarea className="w-full h-full bg-transparent p-3 resize-none focus:outline-none text-xs text-slate-600 dark:text-slate-300 font-mono leading-relaxed custom-scrollbar select-text placeholder:italic placeholder:text-slate-400" value={node.data.analysis || ''} placeholder="等待分析结果，或在此粘贴文本..." onChange={(e) => onUpdate(node.id, { analysis: e.target.value })} onWheel={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} spellCheck={false} />
+                        {node.data.analysis && <button className="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-slate-700/90 border border-slate-300 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all opacity-0 group-hover/analysis:opacity-100 backdrop-blur-md z-10" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(node.data.analysis || ''); }} title="复制全部"><Copy size={12} /></button>}
                     </div>
-                    {isWorking && <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-10"><Loader2 className="animate-spin text-emerald-400" /></div>}
+                    {isWorking && <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm z-10"><Loader2 className="animate-spin text-emerald-400" /></div>}
                 </div>
             )
         }
@@ -903,7 +909,7 @@ const NodeComponent: React.FC<NodeProps> = ({
             return (
                 <div className="w-full h-full p-4 flex flex-col justify-center items-center relative overflow-hidden group/audio">
                     {/* 背景渐变 - 统一粉红色调 */}
-                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-pink-500/10 to-purple-900/10"></div>
+                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-pink-500/10 to-purple-900/10 dark:from-pink-500/20 dark:to-purple-900/30"></div>
 
                     {/* 封面图（音乐模式且有封面时显示） */}
                     {isMusic && coverImage && (
@@ -913,7 +919,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                     )}
 
                     {/* 模式指示器 - 统一粉红色调 */}
-                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-600">
+                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-pink-500/20 text-pink-600 dark:text-pink-400">
                         {isMusic ? <Music size={10} /> : <Mic2 size={10} />}
                         <span>{isMusic ? '音乐' : '语音'}</span>
                     </div>
@@ -924,7 +930,7 @@ const NodeComponent: React.FC<NodeProps> = ({
 
                             {/* 歌曲标题（音乐模式） */}
                             {isMusic && node.data.musicConfig?.title && (
-                                <div className="text-xs font-bold text-slate-700 text-center truncate max-w-full px-4">
+                                <div className="text-xs font-bold text-slate-700 dark:text-slate-200 text-center truncate max-w-full px-4">
                                     {node.data.musicConfig.title}
                                 </div>
                             )}
@@ -938,7 +944,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                                     onClick={toggleAudio}
                                     className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 bg-pink-500/20 hover:bg-pink-500/40 border border-pink-500/50"
                                 >
-                                    {isPlayingAudio ? <Pause size={18} className="text-slate-900" /> : <Play size={18} className="text-slate-900 ml-0.5" />}
+                                    {isPlayingAudio ? <Pause size={18} className="text-slate-900 dark:text-white" /> : <Play size={18} className="text-slate-900 dark:text-white ml-0.5" />}
                                 </button>
                             </div>
                         </div>
@@ -957,7 +963,7 @@ const NodeComponent: React.FC<NodeProps> = ({
 
                     {/* 错误显示 */}
                     {node.status === NodeStatus.ERROR && (
-                        <div className="absolute inset-0 bg-white/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center z-20">
+                        <div className="absolute inset-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center z-20">
                             <AlertCircle className="text-red-500 mb-2" size={24} />
                             <span className="text-[10px] text-red-500 leading-relaxed">{node.data.error}</span>
                         </div>
@@ -973,34 +979,39 @@ const NodeComponent: React.FC<NodeProps> = ({
         const isCutOrContinueMode = node.type === NodeType.VIDEO_FACTORY && (generationMode === 'CUT' || generationMode === 'CONTINUE');
         const showEmptyState = isCutOrContinueMode ? !hasContent : !hasContent;
 
+        const isVideoNode = node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY;
+        const themeColor = isVideoNode ? 'emerald' : 'blue';
+        const bgClass = isVideoNode
+            ? 'bg-emerald-50/30 dark:bg-emerald-900/10 group-hover/media:bg-emerald-50/60 dark:group-hover/media:bg-emerald-900/20'
+            : 'bg-blue-50/30 dark:bg-blue-900/10 group-hover/media:bg-blue-50/60 dark:group-hover/media:bg-blue-900/20';
+
         return (
-            <div className="w-full h-full relative group/media overflow-hidden bg-white" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+            <div className="w-full h-full relative group/media overflow-hidden bg-white dark:bg-slate-800" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
                 {showEmptyState ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
+                    <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600 dark:text-slate-400 transition-colors ${!isCutOrContinueMode ? bgClass : ''}`}>
                         {isCutOrContinueMode ? (
                             // CUT/CONTINUE 模式：根据是否已选择关键帧显示不同状态
                             (() => {
                                 const upstreamVideo = inputAssets?.find(a => a.type === 'video');
                                 const hasCroppedFrame = !!node.data.croppedFrame;
-                                const modeIcon = generationMode === 'CUT' ? <Scissors size={36} className="text-green-400/60" /> : <Film size={36} className="text-green-400/60" />;
-                                const modeLabel = generationMode === 'CUT' ? '局部分镜' : '剧情延展';
+                                const modeIcon = generationMode === 'CUT' ? <Scissors size={36} className="text-emerald-400/60 dark:text-emerald-500/50" /> : <Film size={36} className="text-emerald-400/60 dark:text-emerald-500/50" />;
 
                                 return (
                                     <>
                                         {isWorking ? (
-                                            <Loader2 className="animate-spin text-green-500" size={36} />
+                                            <Loader2 className="animate-spin text-emerald-500" size={36} />
                                         ) : hasCroppedFrame ? (
-                                            <VideoIcon size={36} className="text-green-400/60" />
+                                            <VideoIcon size={36} className="text-emerald-400/60 dark:text-emerald-500/50" />
                                         ) : (
                                             modeIcon
                                         )}
-                                        <span className="text-[11px] font-medium text-green-500">
+                                        <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400/80">
                                             {isWorking ? "生成中..." : (hasCroppedFrame ? "生成结果将在此处呈现" : (upstreamVideo ? "选择关键帧" : "连接上游视频节点"))}
                                         </span>
                                         {/* 悬浮按钮 - 选择/重新选择关键帧 */}
                                         {upstreamVideo && !isWorking && (
                                             <div
-                                                className="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-2 bg-slate-700/90 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer hover:bg-green-600 transition-all opacity-0 group-hover/media:opacity-100 hover:scale-105 shadow-lg"
+                                                className="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-2 bg-slate-800/90 dark:bg-black/90 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer hover:bg-emerald-600 dark:hover:bg-emerald-700 transition-all opacity-0 group-hover/media:opacity-100 hover:scale-105 shadow-lg"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     onCrop?.(node.id, upstreamVideo.src, 'video');
@@ -1016,20 +1027,25 @@ const NodeComponent: React.FC<NodeProps> = ({
                             })()
                         ) : (
                             // 普通生成节点空状态：仅图标+提示文本
-                            <>
+                            <div className="flex flex-col items-center gap-3 scale-100 group-hover/media:scale-105 transition-transform duration-500">
                                 {isWorking ? (
-                                    <Loader2 className={`animate-spin ${node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY ? 'text-green-500' : 'text-blue-500'}`} size={36} />
+                                    <Loader2 className={`animate-spin ${isVideoNode ? 'text-emerald-500' : 'text-blue-500'}`} size={32} />
                                 ) : (
-                                    node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY ? (
-                                        <VideoIcon size={36} className="text-green-400/60" />
-                                    ) : (
-                                        <ImageIcon size={36} className="text-blue-400/60" />
-                                    )
+                                    <div className={`p-4 rounded-full shadow-sm ring-1 transition-shadow ${isVideoNode
+                                        ? 'bg-emerald-100/50 dark:bg-emerald-900/30 ring-emerald-200/50 dark:ring-emerald-700/30 group-hover/media:shadow-md'
+                                        : 'bg-blue-100/50 dark:bg-blue-900/30 ring-blue-200/50 dark:ring-blue-700/30 group-hover/media:shadow-md'
+                                        }`}>
+                                        {isVideoNode ? (
+                                            <VideoIcon size={24} className="text-emerald-500/80 dark:text-emerald-400/80" />
+                                        ) : (
+                                            <ImageIcon size={24} className="text-blue-500/80 dark:text-blue-400/80" />
+                                        )}
+                                    </div>
                                 )}
-                                <span className={`text-[11px] font-medium ${node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY ? 'text-green-500' : 'text-blue-500'}`}>
+                                <span className={`text-[11px] font-bold tracking-wide ${isVideoNode ? 'text-emerald-600/80 dark:text-emerald-400/80' : 'text-blue-600/80 dark:text-blue-400/80'}`}>
                                     {isWorking ? "生成中..." : "生成结果将在此处呈现"}
                                 </span>
-                            </>
+                            </div>
                         )}
                     </div>
                 ) : (
@@ -1051,15 +1067,21 @@ const NodeComponent: React.FC<NodeProps> = ({
                         {/* 组图数量徽章 - 右上角显示 */}
                         {node.data.images && node.data.images.length > 1 && !showImageGrid && (
                             <button
-                                className="absolute top-3 right-3 z-30 flex items-center gap-1.5 px-2.5 py-1.5 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-lg hover:bg-white hover:shadow-xl hover:scale-105 transition-all duration-200 cursor-pointer group/badge"
+                                className="absolute z-30 flex items-center gap-1.5 px-2.5 py-1.5 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg hover:bg-white dark:hover:bg-slate-700 hover:shadow-xl hover:scale-105 transition-all duration-200 cursor-pointer group/badge"
                                 onClick={(e) => { e.stopPropagation(); setShowImageGrid(true); }}
                                 title="点击查看全部结果"
+                                style={{
+                                    top: `${12 * inverseScale}px`,
+                                    right: `${12 * inverseScale}px`,
+                                    transform: `scale(${inverseScale})`,
+                                    transformOrigin: 'top right'
+                                }}
                             >
-                                <Grid3X3 size={12} className="text-slate-500 group-hover/badge:text-blue-500" />
-                                <span className="text-xs font-bold text-slate-600 group-hover/badge:text-blue-600">{node.data.images.length}</span>
+                                <Grid3X3 size={12} className="text-slate-500 dark:text-slate-400 group-hover/badge:text-blue-500 dark:group-hover/badge:text-blue-400" />
+                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 group-hover/badge:text-blue-600 dark:group-hover/badge:text-blue-300">{node.data.images.length}</span>
                             </button>
                         )}
-                        {node.status === NodeStatus.ERROR && <div className="absolute inset-0 bg-white/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20"><AlertCircle className="text-red-500 mb-2" /><span className="text-xs text-red-200">{node.data.error}</span></div>}
+                        {node.status === NodeStatus.ERROR && <div className="absolute inset-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20"><AlertCircle className="text-red-500 mb-2" /><span className="text-xs text-red-200">{node.data.error}</span></div>}
                     </>
                 )}
                 {node.type === NodeType.VIDEO_FACTORY && generationMode === 'CUT' && (videoBlobUrl || node.data.videoUri) &&
@@ -1128,7 +1150,13 @@ const NodeComponent: React.FC<NodeProps> = ({
             const handleCopy = () => { navigator.clipboard.writeText(promptText); setPromptCopied(true); setTimeout(() => setPromptCopied(false), 1500); };
 
             return (
-                <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 transition-all duration-500 ${isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
+                <div className={`absolute top-full left-1/2 w-[98%] z-50 transition-all duration-500 ${isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
+                    style={{
+                        paddingTop: `${8 * inverseScale}px`,
+                        transform: `translateX(-50%) scale(${inverseScale})`,
+                        transformOrigin: 'top center'
+                    }}
+                >
                     <div className={`rounded-[20px] p-1 ${GLASS_PANEL}`} onMouseDown={e => e.stopPropagation()}>
                         <div className="bg-white rounded-[16px] p-3">
                             {/* 模型+配置+复制 */}
@@ -1183,12 +1211,18 @@ const NodeComponent: React.FC<NodeProps> = ({
         const showThumbnails = isCutOrContinueMode ? !!node.data.croppedFrame : hasInputs;
 
         return (
-            <div className={`absolute top-full left-1/2 -translate-x-1/2 w-[98%] pt-2 z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? `opacity-100 translate-y-0 scale-100` : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}>
-                {/* InputThumbnails: CUT/CONTINUE显示croppedFrame，其他模式显示上游输入 */}
-                {showThumbnails && (<div className="w-full flex justify-center mb-2 z-0 relative"><InputThumbnails assets={thumbnailAssets} onReorder={isCutOrContinueMode ? () => {} : (newOrder) => onInputReorder?.(node.id, newOrder)} /></div>)}
+            <div className={`absolute top-full left-1/2 w-[98%] z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? `opacity-100 translate-y-0 scale-100` : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}
+                style={{
+                    paddingTop: `${8 * inverseScale}px`,
+                    transform: `translateX(-50%) scale(${inverseScale})`,
+                    transformOrigin: 'top center'
+                }}
+            >
                 {/* Glass Panel: Set strict Z-Index to higher layer to overlap thumbnails */}
                 <div className={`w-full rounded-[20px] p-1 flex flex-col gap-1 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                    <div className="relative group/input bg-white rounded-[16px]">
+                    <div className="relative group/input bg-white rounded-[16px] flex flex-col overflow-hidden">
+                        {/* InputThumbnails: CUT/CONTINUE显示croppedFrame，其他模式显示上游输入 */}
+                        {showThumbnails && (<div className="w-full px-1 pt-1 z-10"><InputThumbnails assets={thumbnailAssets} onReorder={isCutOrContinueMode ? () => { } : (newOrder) => onInputReorder?.(node.id, newOrder)} /></div>)}
                         <textarea className="w-full bg-transparent text-xs text-slate-700 placeholder-slate-500/60 p-3 focus:outline-none resize-none custom-scrollbar font-medium leading-relaxed" style={{ height: `${Math.min(inputHeight, 200)}px` }} placeholder="描述您的修改或生成需求..." value={localPrompt} onChange={(e) => setLocalPrompt(e.target.value)} onBlur={() => { setIsInputFocused(false); commitPrompt(); }} onKeyDown={handleCmdEnter} onFocus={() => setIsInputFocused(true)} onMouseDown={e => e.stopPropagation()} readOnly={isWorking} />
                         <div className="absolute bottom-0 left-0 w-full h-3 cursor-row-resize flex items-center justify-center opacity-0 group-hover/input:opacity-100 transition-opacity" onMouseDown={handleInputResizeStart}><div className="w-8 h-1 rounded-full bg-slate-100 group-hover/input:bg-slate-200" /></div>
                     </div>
@@ -1328,130 +1362,142 @@ const NodeComponent: React.FC<NodeProps> = ({
     const gridHeight = gridRows * nodeHeight + (gridRows - 1) * gap;
 
     return (
-        <>
-            <div
-                ref={nodeRef}
-                className={`absolute rounded-[24px] group ring-2 ${contentBorderColor} ${isSelected ? 'ring-[3px] shadow-[0_20px_60px_rgba(59,130,246,0.15)]' : 'hover:ring-[3px]'}`}
-                style={{
-                    left: 0, top: 0, width: nodeWidth, height: nodeHeight,
-                    transform: `translate(${node.x}px, ${node.y}px)`,
-                    zIndex: isSelected ? 50 : 10,
-                    background: isSelected ? 'rgba(255, 255, 255, 0.96)' : 'rgba(250, 250, 255, 0.9)',
-                    transition: isInteracting ? 'none' : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), width 0.5s cubic-bezier(0.32, 0.72, 0, 1), height 0.5s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.3s, ring 0.3s',
-                    backdropFilter: isInteracting ? 'none' : 'blur(18px)',
-                    boxShadow: isInteracting ? 'none' : undefined,
-                    willChange: isInteracting ? 'transform' : 'auto'
-                }}
-                onMouseDown={(e) => onNodeMouseDown(e, node.id)} onMouseEnter={() => !isInteracting && setIsHovered(true)} onMouseLeave={() => !isInteracting && setIsHovered(false)} onContextMenu={(e) => onNodeContextMenu(e, node.id)}
-            >
-                {renderTopBar()}
-                {/* 左连接点 - 生成节点可双击/拖拽创建上游节点，素材节点不显示 */}
-                {(() => {
-                    // 素材节点不需要左连接点
-                    const isAssetNode = node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET;
-                    if (isAssetNode) return null;
+        <div
+            ref={nodeRef}
+            className={`absolute rounded-[24px] group ring-2 ${contentBorderColor} ${isSelected ? 'ring-[3px] shadow-[0_20px_60px_rgba(59,130,246,0.15)]' : 'hover:ring-[3px]'}`}
+            style={{
+                left: 0, top: 0,
+                width: showImageGrid ? gridWidth : nodeWidth,
+                height: showImageGrid ? gridHeight : nodeHeight,
+                transform: `translate(${node.x}px, ${node.y}px)`,
+                zIndex: isSelected ? 60 : (isHovered ? 55 : 10),
+                background: isSelected ? 'rgba(255, 255, 255, 0.96)' : 'rgba(250, 250, 255, 0.9)',
+                transition: isInteracting ? 'none' : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), width 0.5s cubic-bezier(0.32, 0.72, 0, 1), height 0.5s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.3s',
+                backdropFilter: isInteracting ? 'none' : 'blur(18px)',
+                boxShadow: isInteracting ? 'none' : `0 0 0 ${(isSelected || isHovered ? 3 : 2) * inverseScale}px var(--tw-ring-color)${isSelected ? ', 0 20px 60px rgba(59,130,246,0.15)' : ''}`,
+                willChange: isInteracting ? 'transform' : 'auto'
+            }}
+            onMouseDown={(e) => onNodeMouseDown(e, node.id)} onMouseEnter={() => !isInteracting && setIsHovered(true)} onMouseLeave={() => !isInteracting && setIsHovered(false)} onContextMenu={(e) => onNodeContextMenu(e, node.id)}
+        >
+            {renderTopBar()}
+            {/* 左连接点 - 生成节点可双击/拖拽创建上游节点，素材节点不显示 */}
+            {(() => {
+                // 素材节点不需要左连接点
+                const isAssetNode = node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET;
+                if (isAssetNode) return null;
 
-                    // 生成节点（图像/视频）支持左连接点交互创建上游节点
-                    const isGeneratorNode = node.type === NodeType.IMAGE_GENERATOR ||
-                                            node.type === NodeType.VIDEO_GENERATOR ||
-                                            node.type === NodeType.VIDEO_FACTORY;
+                // 生成节点（图像/视频）支持左连接点交互创建上游节点
+                const isGeneratorNode = node.type === NodeType.IMAGE_GENERATOR ||
+                    node.type === NodeType.VIDEO_GENERATOR ||
+                    node.type === NodeType.VIDEO_FACTORY;
 
-                    const handleInputDoubleClick = (e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        if (isGeneratorNode && onInputPortAction) {
-                            onInputPortAction(node.id, { x: e.clientX, y: e.clientY });
-                        }
-                    };
+                const handleInputDoubleClick = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    if (isGeneratorNode && onInputPortAction) {
+                        onInputPortAction(node.id, { x: e.clientX, y: e.clientY });
+                    }
+                };
 
-                    const handleInputMouseUp = (e: React.MouseEvent) => {
-                        // 先保存连接状态，因为 onPortMouseUp 会清除它
-                        const wasConnecting = isConnecting;
-                        onPortMouseUp(e, node.id, 'input');
-                        // 如果是从其他节点拖拽释放到生成节点的输入端口，弹出创建菜单
-                        if (isGeneratorNode && onInputPortAction && wasConnecting) {
-                            onInputPortAction(node.id, { x: e.clientX, y: e.clientY });
-                        }
-                    };
+                const handleInputMouseUp = (e: React.MouseEvent) => {
+                    // 先保存连接状态，因为 onPortMouseUp 会清除它
+                    const wasConnecting = isConnecting;
+                    onPortMouseUp(e, node.id, 'input');
+                    // 如果是从其他节点拖拽释放到生成节点的输入端口，弹出创建菜单
+                    if (isGeneratorNode && onInputPortAction && wasConnecting) {
+                        onInputPortAction(node.id, { x: e.clientX, y: e.clientY });
+                    }
+                };
 
-                    return (
-                        <div
-                            className={`absolute -left-3 top-1/2 -translate-y-1/2 rounded-full border bg-white flex items-center justify-center transition-all duration-300 cursor-crosshair z-50 shadow-md
+                return (
+                    <div
+                        className={`absolute -left-3 top-1/2 -translate-y-1/2 rounded-full border bg-white flex items-center justify-center transition-all duration-300 cursor-crosshair z-50 shadow-md
                                 ${isGeneratorNode
-                                    ? 'w-5 h-5 border-teal-400 hover:scale-150 hover:bg-teal-500 hover:border-teal-500 group/input'
-                                    : 'w-4 h-4 border-slate-300 hover:scale-125'}
+                                ? 'w-5 h-5 border-teal-400 hover:scale-150 hover:bg-teal-500 hover:border-teal-500 group/input'
+                                : 'w-4 h-4 border-slate-300 hover:scale-125'}
                                 ${isConnecting ? 'ring-2 ring-cyan-400 animate-pulse' : ''}`}
-                            onMouseDown={(e) => onPortMouseDown(e, node.id, 'input')}
-                            onMouseUp={handleInputMouseUp}
-                            onDoubleClick={handleInputDoubleClick}
-                            title={isGeneratorNode ? "双击添加输入节点" : "Input"}
-                        >
-                            <Plus size={isGeneratorNode ? 12 : 10} strokeWidth={3} className={`transition-colors ${isGeneratorNode ? 'text-teal-400 group-hover/input:text-white' : 'text-slate-400'}`} />
-                        </div>
-                    );
-                })()}
-                {/* 右连接点 - 有媒体结果时增强交互，颜色随内容类型：图片蓝/视频绿 */}
-                {(() => {
-                    const hasMedia = !!(node.data.image || node.data.videoUri);
-                    const hasVideo = !!node.data.videoUri;
-                    // 根据内容类型选择颜色：视频-绿色，图片-蓝色
-                    const portColorClass = hasVideo
-                        ? 'border-green-400 hover:bg-green-500 hover:border-green-500'
-                        : 'border-blue-400 hover:bg-blue-500 hover:border-blue-500';
-                    const iconColorClass = hasVideo ? 'text-green-400' : 'text-blue-400';
+                        style={{
+                            left: `${-12 * inverseScale}px`,
+                            transform: `translateY(-50%) scale(${inverseScale})`,
+                            transformOrigin: 'center center'
+                        }}
+                        onMouseDown={(e) => onPortMouseDown(e, node.id, 'input')}
+                        onMouseUp={handleInputMouseUp}
+                        onDoubleClick={handleInputDoubleClick}
+                        title={isGeneratorNode ? "双击添加输入节点" : "Input"}
+                    >
+                        <Plus size={isGeneratorNode ? 12 : 10} strokeWidth={3} className={`transition-colors ${isGeneratorNode ? 'text-teal-400 group-hover/input:text-white' : 'text-slate-400'}`} />
+                    </div>
+                );
+            })()}
+            {/* 右连接点 - 有媒体结果时增强交互，颜色随内容类型：图片蓝/视频绿 */}
+            {(() => {
+                const hasMedia = !!(node.data.image || node.data.videoUri);
+                const hasVideo = !!node.data.videoUri;
+                // 根据内容类型选择颜色：视频-绿色，图片-蓝色
+                const portColorClass = hasVideo
+                    ? 'border-green-400 hover:bg-green-500 hover:border-green-500'
+                    : 'border-blue-400 hover:bg-blue-500 hover:border-blue-500';
+                const iconColorClass = hasVideo ? 'text-green-400' : 'text-blue-400';
 
-                    const handleOutputDoubleClick = (e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        if (hasMedia && onOutputPortAction) {
-                            onOutputPortAction(node.id, { x: e.clientX, y: e.clientY });
-                        }
-                    };
-                    const handleOutputMouseUp = (e: React.MouseEvent) => {
-                        // 先保存连接状态，因为 onPortMouseUp 会清除它
-                        const wasConnecting = isConnecting;
-                        onPortMouseUp(e, node.id, 'output');
-                        // 如果是拖拽释放且有媒体结果，也触发选框
-                        if (hasMedia && onOutputPortAction && wasConnecting) {
-                            onOutputPortAction(node.id, { x: e.clientX, y: e.clientY });
-                        }
-                    };
-                    return (
-                        <div
-                            className={`absolute -right-3 top-1/2 -translate-y-1/2 rounded-full border bg-white flex items-center justify-center transition-all duration-300 cursor-crosshair z-50 shadow-md
+                const handleOutputDoubleClick = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    if (hasMedia && onOutputPortAction) {
+                        onOutputPortAction(node.id, { x: e.clientX, y: e.clientY });
+                    }
+                };
+                const handleOutputMouseUp = (e: React.MouseEvent) => {
+                    // 先保存连接状态，因为 onPortMouseUp 会清除它
+                    const wasConnecting = isConnecting;
+                    onPortMouseUp(e, node.id, 'output');
+                    // 如果是拖拽释放且有媒体结果，也触发选框
+                    if (hasMedia && onOutputPortAction && wasConnecting) {
+                        onOutputPortAction(node.id, { x: e.clientX, y: e.clientY });
+                    }
+                };
+                return (
+                    <div
+                        className={`absolute -right-3 top-1/2 -translate-y-1/2 rounded-full border bg-white flex items-center justify-center transition-all duration-300 cursor-crosshair z-50 shadow-md
                                 ${hasMedia
-                                    ? `w-5 h-5 ${portColorClass} hover:scale-150 group/output`
-                                    : 'w-4 h-4 border-slate-300 hover:scale-125'}
+                                ? `w-5 h-5 ${portColorClass} hover:scale-150 group/output`
+                                : 'w-4 h-4 border-slate-300 hover:scale-125'}
                                 ${isConnecting ? 'ring-2 ring-purple-400 animate-pulse' : ''}`}
-                            onMouseDown={(e) => onPortMouseDown(e, node.id, 'output')}
-                            onMouseUp={handleOutputMouseUp}
-                            onDoubleClick={handleOutputDoubleClick}
-                            title={hasMedia ? "双击创建下游节点" : "Output"}
-                        >
-                            <Plus size={hasMedia ? 12 : 10} strokeWidth={3} className={`transition-colors ${hasMedia ? `${iconColorClass} group-hover/output:text-white` : 'text-slate-400'}`} />
-                        </div>
-                    );
-                })()}
-                <div className="w-full h-full flex flex-col relative rounded-[24px] overflow-hidden bg-white"><div className="flex-1 min-h-0 relative bg-white">{renderMediaContent()}</div></div>
-                {renderBottomPanel()}
-                <div className="absolute -bottom-3 -right-3 w-6 h-6 flex items-center justify-center cursor-nwse-resize text-slate-500 hover:text-slate-900 transition-colors opacity-0 group-hover:opacity-100 z-50" onMouseDown={(e) => onResizeMouseDown(e, node.id, nodeWidth, nodeHeight)}><div className="w-1.5 h-1.5 rounded-full bg-current" /></div>
-            </div>
-            {/* 组图宫格 - 始终渲染，CSS控制显隐，支持拖拽到画布 */}
-            {hasGrid && (
+                        style={{
+                            right: `${-12 * inverseScale}px`,
+                            transform: `translateY(-50%) scale(${inverseScale})`,
+                            transformOrigin: 'center center'
+                        }}
+                        onMouseDown={(e) => onPortMouseDown(e, node.id, 'output')}
+                        onMouseUp={handleOutputMouseUp}
+                        onDoubleClick={handleOutputDoubleClick}
+                        title={hasMedia ? "双击创建下游节点" : "Output"}
+                    >
+                        <Plus size={hasMedia ? 12 : 10} strokeWidth={3} className={`transition-colors ${hasMedia ? `${iconColorClass} group-hover/output:text-white` : 'text-slate-400'}`} />
+                    </div>
+                );
+            })()}
+            <div className="w-full h-full flex flex-col relative rounded-[24px] overflow-hidden bg-white"><div className="flex-1 min-h-0 relative bg-white">{renderMediaContent()}</div></div>
+            {renderBottomPanel()}
+            <div className="absolute -bottom-3 -right-3 w-6 h-6 flex items-center justify-center cursor-nwse-resize text-slate-500 hover:text-slate-900 transition-colors opacity-0 group-hover:opacity-100 z-50" onMouseDown={(e) => onResizeMouseDown(e, node.id, nodeWidth, nodeHeight)}><div className="w-1.5 h-1.5 rounded-full bg-current" /></div>
+            {/* 组图宫格 - 移入内部渲染，让边框包裹 */}
+            {hasGrid && showImageGrid && (
                 <div
-                    className="absolute bg-white rounded-[24px] shadow-2xl transition-all duration-200 select-none"
+                    className="absolute bg-white z-[200] rounded-[24px] pointer-events-auto select-none"
                     style={{
                         left: 0, top: 0,
-                        transform: `translate(${node.x}px, ${node.y}px)`,
                         width: gridWidth,
                         height: gridHeight,
-                        zIndex: showImageGrid ? 200 : -1,
-                        opacity: showImageGrid ? 1 : 0,
-                        pointerEvents: showImageGrid ? 'auto' : 'none',
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
                     <button
                         className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center bg-black/50 hover:bg-black/70 rounded-full transition-colors"
                         onClick={() => setShowImageGrid(false)}
+                        style={{
+                            top: `${12 * inverseScale}px`,
+                            right: `${12 * inverseScale}px`,
+                            transform: `scale(${inverseScale})`,
+                            transformOrigin: 'top right'
+                        }}
                     >
                         <X size={14} className="text-white" />
                     </button>
@@ -1628,7 +1674,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                     </div>
                 </div>
             )}
-        </>
+        </div>
     );
 };
 

@@ -5,7 +5,7 @@ import {
     Plus, RotateCcw, History, MessageSquare, X,
     ImageIcon, Video as VideoIcon, Film,
     Edit, Trash2, ScanFace, Brush, Type,
-    Clapperboard, Mic2, Layers
+    Clapperboard, Mic2, Layers, Sun, Moon
 } from 'lucide-react';
 import { NodeType, Canvas } from '@/types';
 
@@ -31,11 +31,15 @@ interface SidebarDockProps {
     onSelectCanvas: (id: string) => void;
     onDeleteCanvas: (id: string) => void;
     onRenameCanvas: (id: string, title: string) => void;
+
+    // Theme
+    theme: 'light' | 'dark';
+    onSetTheme: (theme: 'light' | 'dark') => void;
 }
 
 // Helper Helpers
 const getNodeNameCN = (t: string) => {
-    switch(t) {
+    switch (t) {
         case NodeType.PROMPT_INPUT: return '提示词';
         case NodeType.IMAGE_ASSET: return '插入图片';
         case NodeType.VIDEO_ASSET: return '插入视频';
@@ -50,7 +54,7 @@ const getNodeNameCN = (t: string) => {
 };
 
 const getNodeIcon = (t: string) => {
-    switch(t) {
+    switch (t) {
         case NodeType.PROMPT_INPUT: return Type;
         case NodeType.IMAGE_ASSET: return ImageIcon;
         case NodeType.VIDEO_ASSET: return VideoIcon;
@@ -70,7 +74,7 @@ const EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 // 节点类型对应的颜色
 const getNodeColor = (type: string) => {
-    switch(type) {
+    switch (type) {
         case NodeType.PROMPT_INPUT: return '#fbbf24'; // amber (文本-黄色)
         case NodeType.IMAGE_ASSET: return '#60a5fa'; // blue (图片-蓝色)
         case NodeType.VIDEO_ASSET: return '#4ade80'; // green (视频-绿色)
@@ -246,7 +250,9 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
     onNewCanvas,
     onSelectCanvas,
     onDeleteCanvas,
-    onRenameCanvas
+    onRenameCanvas,
+    theme,
+    onSetTheme
 }) => {
     const [activePanel, setActivePanel] = useState<'history' | 'add' | 'canvas' | null>(null);
     const [activeHistoryTab, setActiveHistoryTab] = useState<'image' | 'video'>('image');
@@ -332,13 +338,13 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                         </div>
                         {/* Tabs */}
                         <div className="flex bg-slate-100 p-1 rounded-lg">
-                            <button 
+                            <button
                                 onClick={() => setActiveHistoryTab('image')}
                                 className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeHistoryTab === 'image' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-600'}`}
                             >
                                 <ImageIcon size={12} /> 图片
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setActiveHistoryTab('video')}
                                 className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeHistoryTab === 'video' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-600'}`}
                             >
@@ -355,8 +361,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                         ) : (
                             <div className="grid grid-cols-2 gap-2 p-1">
                                 {filteredAssets.map(a => (
-                                    <div 
-                                        key={a.id} 
+                                    <div
+                                        key={a.id}
                                         className="aspect-square rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border border-slate-200 hover:border-blue-500/50 transition-colors group relative shadow-md bg-slate-100"
                                         draggable={true}
                                         onDragStart={(e) => {
@@ -410,7 +416,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                         {canvases.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-10 text-slate-500 opacity-60 select-none">
                                 <Layers size={48} strokeWidth={1} className="mb-3 opacity-50" />
-                                <span className="text-[10px] font-medium tracking-widest uppercase text-center">暂无画布<br/>点击 + 创建新画布</span>
+                                <span className="text-[10px] font-medium tracking-widest uppercase text-center">暂无画布<br />点击 + 创建新画布</span>
                             </div>
                         ) : (
                             canvases.map(canvas => (
@@ -481,7 +487,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                             >
                                 <div className="p-2 bg-slate-100 rounded-lg text-blue-200 shadow-inner">
                                     <ItemIcon size={16} />
-                                </div> 
+                                </div>
                                 <div className="flex flex-col">
                                     <span className="font-medium text-xs">{getNodeNameCN(t)}</span>
                                 </div>
@@ -496,7 +502,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
     return (
         <>
             {/* Left Vertical Dock */}
-            <div 
+            <div
                 className="fixed left-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 p-2 bg-[#ffffff]/70 backdrop-blur-2xl border border-slate-300 rounded-2xl shadow-2xl z-50 animate-in slide-in-from-left-10 duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
                 onMouseLeave={handleSidebarLeave}
             >
@@ -506,6 +512,12 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     { id: 'history', icon: History, tooltip: '历史记录' },
                     { id: 'chat', icon: MessageSquare, action: onToggleChat, active: isChatOpen, tooltip: '对话' },
                     { id: 'undo', icon: RotateCcw, action: onUndo, tooltip: '撤销' },
+                    {
+                        id: 'theme_toggle',
+                        icon: theme === 'light' ? Sun : Moon,
+                        action: () => onSetTheme(theme === 'light' ? 'dark' : 'light'),
+                        tooltip: theme === 'light' ? '切换暗色' : '切换亮色'
+                    },
                 ].map(item => {
                     const isActive = activePanel === item.id || item.active;
                     const hasPanel = ['add', 'history', 'canvas'].includes(item.id);
@@ -535,7 +547,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                         </div>
                     );
                 })}
-                
+
                 {/* Spacer & Canvas Manager */}
                 <div className="w-8 h-px bg-slate-100 my-1"></div>
 
@@ -591,16 +603,16 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
 
             {/* Global Context Menu (Rendered outside the transformed panel to fix positioning) */}
             {contextMenu && (
-                <div 
+                <div
                     className="fixed z-[100] bg-[#ffffff] border border-slate-300 rounded-lg shadow-2xl p-1 animate-in fade-in zoom-in-95 duration-200 min-w-[120px]"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onMouseDown={e => e.stopPropagation()}
                     onMouseLeave={() => setContextMenu(null)}
                 >
                     {contextMenu.type === 'history' && (
-                         <button className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/20 rounded-md flex items-center gap-2" onClick={() => { onDeleteAsset(contextMenu.id); setContextMenu(null); }}>
-                             <Trash2 size={12} /> 删除
-                         </button>
+                        <button className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/20 rounded-md flex items-center gap-2" onClick={() => { onDeleteAsset(contextMenu.id); setContextMenu(null); }}>
+                            <Trash2 size={12} /> 删除
+                        </button>
                     )}
                     {contextMenu.type === 'canvas' && (
                         <>
