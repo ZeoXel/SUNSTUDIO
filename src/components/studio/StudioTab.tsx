@@ -11,14 +11,14 @@ import { SmartSequenceDock } from './SmartSequenceDock';
 import { generateViduMultiFrame } from '@/services/viduService';
 import { SettingsModal } from './SettingsModal';
 import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, SmartSequenceItem, Canvas, VideoGenerationMode } from '@/types';
-import { generateImageFromText, generateVideo, analyzeVideo, editImageWithText, planStoryboard, orchestrateVideoPrompt, urlToBase64, extractLastFrame, generateAudio } from '@/services/geminiService';
+import { generateImageFromText, generateVideo, analyzeImage, editImageWithText, planStoryboard, orchestrateVideoPrompt, urlToBase64, extractLastFrame, generateAudio } from '@/services/geminiService';
 import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
 import { synthesizeSpeech, MinimaxGenerateParams } from '@/services/minimaxService';
 import { saveToStorage, loadFromStorage } from '@/services/storage';
 import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
-    ScanFace, Brush, MousePointerClick, LayoutTemplate, X, Film, Link, RefreshCw, Upload,
+    Brush, MousePointerClick, LayoutTemplate, X, Film, Link, RefreshCw, Upload,
     Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan, Music, Mic2, FileSearch, Scissors
 } from 'lucide-react';
 
@@ -26,6 +26,24 @@ import {
 const SPRING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const SNAP_THRESHOLD = 8; // Pixels for magnetic snap
 const COLLISION_PADDING = 24; // Spacing when nodes bounce off each other
+
+// 连接点配置 - 与 Node.tsx 中的连接点位置保持一致
+const PORT_OFFSET = 12; // 连接点中心到节点边缘的基础距离
+
+// 生成平滑贝塞尔曲线路径
+const generateBezierPath = (fx: number, fy: number, tx: number, ty: number): string => {
+    const dx = tx - fx;
+    const dy = ty - fy;
+    // 控制点偏移：水平距离越大，曲线越平缓；垂直落差越大，曲线越陡
+    const controlX = Math.max(Math.abs(dx) * 0.5, 60);
+    // 当终点在起点左边时（反向连接），调整控制点
+    if (dx < 0) {
+        const midX = (fx + tx) / 2;
+        const midY = (fy + ty) / 2;
+        return `M ${fx} ${fy} Q ${fx + 80} ${fy}, ${midX} ${midY} Q ${tx - 80} ${ty}, ${tx} ${ty}`;
+    }
+    return `M ${fx} ${fy} C ${fx + controlX} ${fy}, ${tx - controlX} ${ty}, ${tx} ${ty}`;
+};
 
 // Helper to get image dimensions
 const getImageDimensions = (src: string): Promise<{ width: number, height: number }> => {
@@ -433,7 +451,7 @@ export default function StudioTab() {
     const getApproxNodeHeight = (node: AppNode) => {
         if (node.height) return node.height;
         const width = node.width || 420;
-        if (['VIDEO_ANALYZER', 'IMAGE_EDITOR'].includes(node.type)) return 360;
+        if (node.type === NodeType.IMAGE_EDITOR) return 360;
         if (node.type === NodeType.AUDIO_GENERATOR) return Math.round(width * 9 / 16); // 16:9 比例
         // 提示词节点和素材节点默认 16:9 比例
         const defaultRatio = (node.type === NodeType.PROMPT_INPUT || node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET) ? '16:9' : '1:1';
@@ -456,6 +474,18 @@ export default function StudioTab() {
         return node ? { x: node.x, y: node.y } : null;
     };
 
+    // 计算连接点中心位置
+    const getPortCenter = (node: AppNode, portType: 'input' | 'output') => {
+        const pos = getNodePosition(node.id) || { x: node.x, y: node.y };
+        const width = node.width || 420;
+        const height = node.height || getApproxNodeHeight(node);
+        const y = pos.y + height / 2;
+        // 连接点中心 = 节点边缘 + PORT_OFFSET（连接点在节点外部）
+        return portType === 'output'
+            ? { x: pos.x + width + PORT_OFFSET, y }
+            : { x: pos.x - PORT_OFFSET, y };
+    };
+
     // 更新与指定节点相关的所有连接线
     const updateConnectionPaths = (nodeIds: string[]) => {
         const nodeIdSet = new Set(nodeIds);
@@ -466,23 +496,16 @@ export default function StudioTab() {
             const hitPathEl = connectionPathsRef.current.get(`${conn.from}-${conn.to}-hit`);
             if (!pathEl) return;
 
-            const fromPos = getNodePosition(conn.from);
-            const toPos = getNodePosition(conn.to);
-            if (!fromPos || !toPos) return;
-
             const fromNode = nodesRef.current.find(n => n.id === conn.from);
             const toNode = nodesRef.current.find(n => n.id === conn.to);
             if (!fromNode || !toNode) return;
 
-            const fHeight = fromNode.height || getApproxNodeHeight(fromNode);
-            const tHeight = toNode.height || getApproxNodeHeight(toNode);
-            const fx = fromPos.x + (fromNode.width || 420) + 3;
-            let fy = fromPos.y + fHeight / 2;
-            const tx = toPos.x - 3;
-            let ty = toPos.y + tHeight / 2;
-            if (Math.abs(fy - ty) < 0.5) ty += 0.5;
+            const from = getPortCenter(fromNode, 'output');
+            const to = getPortCenter(toNode, 'input');
+            // 避免完全水平时渲染问题
+            if (Math.abs(from.y - to.y) < 0.5) to.y += 0.5;
 
-            const d = `M ${fx} ${fy} C ${fx + (tx - fx) * 0.5} ${fy} ${tx - (tx - fx) * 0.5} ${ty} ${tx} ${ty}`;
+            const d = generateBezierPath(from.x, from.y, to.x, to.y);
             pathEl.setAttribute('d', d);
             if (hitPathEl) hitPathEl.setAttribute('d', d);
         });
@@ -530,7 +553,6 @@ export default function StudioTab() {
             case NodeType.VIDEO_GENERATOR: return '视频生成';
             case NodeType.VIDEO_FACTORY: return '视频工厂';
             case NodeType.AUDIO_GENERATOR: return '灵感音乐';
-            case NodeType.VIDEO_ANALYZER: return '视频分析';
             case NodeType.IMAGE_EDITOR: return '图像编辑';
             default: return t;
         }
@@ -544,7 +566,6 @@ export default function StudioTab() {
             case NodeType.VIDEO_GENERATOR: return Film;
             case NodeType.VIDEO_FACTORY: return VideoIcon;
             case NodeType.AUDIO_GENERATOR: return Mic2;
-            case NodeType.VIDEO_ANALYZER: return ScanFace;
             case NodeType.IMAGE_EDITOR: return Brush;
             default: return Plus;
         }
@@ -624,10 +645,9 @@ export default function StudioTab() {
 
         const defaults: any = {
             model: type === NodeType.VIDEO_GENERATOR ? 'veo3.1' :
-                type === NodeType.VIDEO_ANALYZER ? 'gemini-2.5-flash' :
-                    type === NodeType.AUDIO_GENERATOR ? defaultAudioModel :
-                        type.includes('IMAGE') ? 'doubao-seedream-4-5-251128' :
-                            'gemini-2.5-flash',
+                type === NodeType.AUDIO_GENERATOR ? defaultAudioModel :
+                    type.includes('IMAGE') ? 'doubao-seedream-4-5-251128' :
+                        'gemini-2.5-flash',
             generationMode: type === NodeType.VIDEO_GENERATOR ? 'DEFAULT' : undefined,
             // 图像/视频节点默认比例为 16:9
             aspectRatio: (type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR || type === NodeType.VIDEO_FACTORY) ? '16:9' : undefined,
@@ -646,7 +666,6 @@ export default function StudioTab() {
             [NodeType.VIDEO_GENERATOR]: '视频生成',
             [NodeType.VIDEO_FACTORY]: '视频工厂',
             [NodeType.AUDIO_GENERATOR]: '灵感音乐',
-            [NodeType.VIDEO_ANALYZER]: '视频分析',
             [NodeType.IMAGE_EDITOR]: '图像编辑'
         };
 
@@ -658,10 +677,9 @@ export default function StudioTab() {
         // 计算节点预估高度并找到不重叠的位置
         const nodeWidth = 420;
         const [rw, rh] = (defaults.aspectRatio || '16:9').split(':').map(Number);
-        const nodeHeight = type === NodeType.VIDEO_ANALYZER ? 360 :
-            type === NodeType.AUDIO_GENERATOR ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
-                type === NodeType.PROMPT_INPUT ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
-                    (nodeWidth * rh / rw);
+        const nodeHeight = type === NodeType.AUDIO_GENERATOR ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
+            type === NodeType.PROMPT_INPUT ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
+                (nodeWidth * rh / rw);
 
         const { x: finalX, y: finalY } = findNonOverlappingPosition(safeBaseX, safeBaseY, nodeWidth, nodeHeight, nodesRef.current, 'down');
 
@@ -1100,29 +1118,35 @@ export default function StudioTab() {
 
         if (draggingNodeId || resizingNodeId || dragGroupRef.current) saveHistory();
 
-        // 检查是否从有媒体内容的节点的输出端口开始拖拽并释放到空白区域
+        // 检查是否从有输出能力的节点的输出端口开始拖拽并释放到空白区域
         // 如果是，弹出节点选择框（继续编辑功能）
         const connStart = connectionStartRef.current;
         if (connStart && connStart.portType === 'output' && connStart.id !== 'smart-sequence-dock') {
             const sourceNode = nodesRef.current.find(n => n.id === connStart.id);
-            if (sourceNode && (sourceNode.data.image || sourceNode.data.videoUri)) {
-                // 使用鼠标释放位置弹出菜单，并记录画布坐标用于创建节点
-                const canvasX = (e.clientX - pan.x) / scale;
-                const canvasY = (e.clientY - pan.y) / scale;
-                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: connStart.id });
-                setContextMenuTarget({ type: 'output-action', sourceNodeId: connStart.id, canvasX, canvasY });
+            if (sourceNode) {
+                const hasMedia = !!(sourceNode.data.image || sourceNode.data.videoUri);
+                const isPromptNode = sourceNode.type === NodeType.PROMPT_INPUT;
+                const hasPromptContent = isPromptNode && !!(sourceNode.data.prompt && sourceNode.data.prompt.trim());
+                // 有媒体内容 或 提示词节点有内容
+                if (hasMedia || hasPromptContent) {
+                    const canvasX = (e.clientX - pan.x) / scale;
+                    const canvasY = (e.clientY - pan.y) / scale;
+                    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: connStart.id });
+                    setContextMenuTarget({ type: 'output-action', sourceNodeId: connStart.id, canvasX, canvasY });
+                }
             }
         }
 
-        // 检查是否从生成节点的输入端口开始拖拽并释放到空白区域
+        // 检查是否从生成节点/提示词节点的输入端口开始拖拽并释放到空白区域
         // 如果是，弹出上游节点选择框（素材/描述）
         if (connStart && connStart.portType === 'input') {
             const targetNode = nodesRef.current.find(n => n.id === connStart.id);
-            // 仅对生成节点（图像/视频）生效
+            // 对生成节点（图像/视频）和提示词节点生效
             if (targetNode && (
                 targetNode.type === NodeType.IMAGE_GENERATOR ||
                 targetNode.type === NodeType.VIDEO_GENERATOR ||
-                targetNode.type === NodeType.VIDEO_FACTORY
+                targetNode.type === NodeType.VIDEO_FACTORY ||
+                targetNode.type === NodeType.PROMPT_INPUT
             )) {
                 const canvasX = (e.clientX - pan.x) / scale;
                 const canvasY = (e.clientY - pan.y) / scale;
@@ -1138,19 +1162,24 @@ export default function StudioTab() {
     useEffect(() => { window.addEventListener('mousemove', handleGlobalMouseMove); window.addEventListener('mouseup', handleGlobalMouseUp); return () => { window.removeEventListener('mousemove', handleGlobalMouseMove); window.removeEventListener('mouseup', handleGlobalMouseUp); }; }, [handleGlobalMouseMove, handleGlobalMouseUp]);
 
     const handleNodeUpdate = useCallback((id: string, data: any, size?: any, title?: string) => {
-        setNodes(prev => prev.map(n => {
-            if (n.id === id) {
-                const updated = { ...n, data: { ...n.data, ...data }, title: title || n.title };
-                if (size) { if (size.width) updated.width = size.width; if (size.height) updated.height = size.height; }
+        setNodes(prev => {
+            const newNodes = prev.map(n => {
+                if (n.id === id) {
+                    const updated = { ...n, data: { ...n.data, ...data }, title: title || n.title };
+                    if (size) { if (size.width) updated.width = size.width; if (size.height) updated.height = size.height; }
 
-                if (data.image) handleAssetGenerated('image', data.image, updated.title);
-                if (data.videoUri) handleAssetGenerated('video', data.videoUri, updated.title);
-                if (data.audioUri) handleAssetGenerated('audio', data.audioUri, updated.title);
+                    if (data.image) handleAssetGenerated('image', data.image, updated.title);
+                    if (data.videoUri) handleAssetGenerated('video', data.videoUri, updated.title);
+                    if (data.audioUri) handleAssetGenerated('audio', data.audioUri, updated.title);
 
-                return updated;
-            }
-            return n;
-        }));
+                    return updated;
+                }
+                return n;
+            });
+            // 同步更新 ref，确保后续操作能立即获取最新数据
+            nodesRef.current = newNodes;
+            return newNodes;
+        });
     }, [handleAssetGenerated]);
 
     const handleReplaceFile = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
@@ -1178,7 +1207,6 @@ export default function StudioTab() {
 
             const upstreamTexts = inputs.map(n => {
                 if (n?.type === NodeType.PROMPT_INPUT) return n.data.prompt;
-                if (n?.type === NodeType.VIDEO_ANALYZER) return n.data.analysis;
                 return null;
             }).filter(t => t && t.trim().length > 0) as string[];
 
@@ -1188,20 +1216,52 @@ export default function StudioTab() {
                 prompt = prompt ? `${combinedUpstream}\n${prompt}` : combinedUpstream;
             }
 
-            // 创意描述节点：调用 LLM 生成/优化提示词
+            // 创意描述节点：统一使用 /api/studio/chat 处理文本/图片/视频分析
             if (node.type === NodeType.PROMPT_INPUT) {
-                const userInput = promptOverride || node.data.prompt || '';
-                if (!userInput.trim()) {
-                    throw new Error("请输入您的创意想法");
-                }
+                const requestPrompt = promptOverride || ''; // 需求（来自配置框）
+                const contentPrompt = node.data.prompt || ''; // 内容（节点内文本）
+                const selectedModel = node.data.model || 'gemini-2.5-flash';
+
+                // 检查上游是否有媒体素材
+                let upstreamImage = inputs.find(n => n?.data.image)?.data.image;
+                let upstreamVideo = inputs.find(n => n?.data.videoUri)?.data.videoUri;
 
                 try {
+                    let generatedPrompt = '';
+
+                    // 将 blob URL 转换为 base64（远程 API 无法访问 blob URL）
+                    if (upstreamImage && upstreamImage.startsWith('blob:')) {
+                        upstreamImage = await urlToBase64(upstreamImage);
+                    }
+                    if (upstreamVideo && upstreamVideo.startsWith('blob:')) {
+                        upstreamVideo = await urlToBase64(upstreamVideo);
+                    }
+
+                    // 统一使用 /api/studio/chat 处理文本/图片/视频
+                    let userMessage = '';
+                    if (contentPrompt.trim() && requestPrompt.trim()) {
+                        userMessage = `需求：${requestPrompt}\n\n原内容：${contentPrompt}`;
+                    } else if (contentPrompt.trim()) {
+                        userMessage = contentPrompt;
+                    } else if (requestPrompt.trim()) {
+                        userMessage = requestPrompt;
+                    } else if (upstreamVideo) {
+                        userMessage = '请详细描述这个视频的内容、风格、运动、镜头语言等视觉元素，生成可用于视频生成的提示词。';
+                    } else if (upstreamImage) {
+                        userMessage = '请详细描述这张图片的内容、风格、构图、色彩等视觉元素，生成可用于AI图片/视频生成的提示词。';
+                    } else {
+                        throw new Error('请输入内容或连接素材');
+                    }
+
                     const response = await fetch('/api/studio/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            messages: [{ role: 'user', text: userInput }],
-                            mode: 'prompt_generator'
+                            messages: [{ role: 'user', text: userMessage }],
+                            mode: 'prompt_generator',
+                            model: selectedModel,
+                            image: upstreamImage || undefined,
+                            video: upstreamVideo || undefined
                         })
                     });
 
@@ -1211,13 +1271,13 @@ export default function StudioTab() {
                     }
 
                     const result = await response.json();
-                    const generatedPrompt = result.message || '';
+                    generatedPrompt = result.message || '';
 
-                    // 将生成的提示词保存到节点
                     handleNodeUpdate(id, { prompt: generatedPrompt });
                     setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
-                    return; // 提前返回，不执行后续逻辑
+                    return;
                 } catch (e: any) {
+                    console.error('[PROMPT_INPUT] Error:', e);
                     handleNodeUpdate(id, { error: e.message });
                     setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.ERROR } : n));
                     return;
@@ -1667,13 +1727,6 @@ export default function StudioTab() {
                     handleNodeUpdate(id, { audioUri });
                 }
 
-            } else if (node.type === NodeType.VIDEO_ANALYZER) {
-                const vid = node.data.videoUri || inputs.find(n => n?.data.videoUri)?.data.videoUri;
-                if (!vid) throw new Error("未找到视频输入");
-                let vidData = vid;
-                if (vid.startsWith('http')) vidData = await urlToBase64(vid);
-                const txt = await analyzeVideo(vidData, prompt, node.data.model || 'gemini-2.5-flash');
-                handleNodeUpdate(id, { analysis: txt });
             } else if (node.type === NodeType.IMAGE_EDITOR) {
                 const inputImages: string[] = [];
                 inputs.forEach(n => { if (n?.data.image) inputImages.push(n.data.image); });
@@ -2039,12 +2092,9 @@ export default function StudioTab() {
                 onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
             >
                 <div className="absolute inset-0 noise-bg opacity-30 dark:opacity-20 pointer-events-none" />
-                <div className="absolute inset-0 pointer-events-none opacity-[0.4] dark:opacity-[0.3]" style={{ backgroundImage: 'radial-gradient(circle, var(--grid-color) 1px, transparent 1px)', backgroundSize: `${32 * scale}px ${32 * scale}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }} />
-                {/* Dark mode grid override via CSS variable if needed, or just relying on opacity/color choice. 
-                    Better: Use the CSS variable approach fully. 
-                    Let's use a dynamic style content in the generated gradient string.
-                */}
-                <style dangerouslySetInnerHTML={{ __html: `.dark [data-canvas-container] { --grid-color: #334155; }` }} />
+                <div className="absolute inset-0 pointer-events-none opacity-[0.4] dark:opacity-[0.5]" style={{ backgroundImage: 'radial-gradient(circle, var(--grid-color) 1px, transparent 1px)', backgroundSize: `${32 * scale}px ${32 * scale}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }} />
+                {/* 深色模式下使用更亮的网格点颜色 */}
+                <style dangerouslySetInnerHTML={{ __html: `.dark [data-canvas-container] { --grid-color: #475569; }` }} />
 
                 {/* 空状态 / 初始欢迎页 - 重新设计 (V2: 极简去框) */}
                 <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-[${SPRING}] z-10 pointer-events-none ${nodes.length > 0 ? 'opacity-0 scale-110 blur-sm' : 'opacity-100 scale-100 blur-0'}`}>
@@ -2114,12 +2164,14 @@ export default function StudioTab() {
                         {connections.map((conn) => {
                             const f = nodes.find(n => n.id === conn.from), t = nodes.find(n => n.id === conn.to);
                             if (!f || !t) return null;
-                            const fHeight = f.height || getApproxNodeHeight(f); const tHeight = t.height || getApproxNodeHeight(t);
-                            const fx = f.x + (f.width || 420) + 3; let fy = f.y + fHeight / 2;
-                            const tx = t.x - 3; let ty = t.y + tHeight / 2;
+                            // 计算连接点中心位置
+                            const fW = f.width || 420, fH = f.height || getApproxNodeHeight(f);
+                            const tH = t.height || getApproxNodeHeight(t);
+                            const fx = f.x + fW + PORT_OFFSET, fy = f.y + fH / 2;
+                            const tx = t.x - PORT_OFFSET; let ty = t.y + tH / 2;
                             if (Math.abs(fy - ty) < 0.5) ty += 0.5;
                             if (isNaN(fx) || isNaN(fy) || isNaN(tx) || isNaN(ty)) return null;
-                            const d = `M ${fx} ${fy} C ${fx + (tx - fx) * 0.5} ${fy} ${tx - (tx - fx) * 0.5} ${ty} ${tx} ${ty}`;
+                            const d = generateBezierPath(fx, fy, tx, ty);
                             // 自动连接（批量生产）使用虚线样式
                             const isAutoConnection = conn.isAuto;
                             const connKey = `${conn.from}-${conn.to}`;
@@ -2135,7 +2187,7 @@ export default function StudioTab() {
                                         strokeDasharray={isAutoConnection ? `${8 / scale} ${4 / scale}` : "none"}
                                         className="transition-colors duration-300 group-hover/line:stroke-white group-hover/line:stroke-opacity-40"
                                     />
-                                    <path ref={(el) => { if (el) connectionPathsRef.current.set(`${connKey}-hit`, el); else connectionPathsRef.current.delete(`${connKey}-hit`); }} d={d} stroke="transparent" strokeWidth="15" fill="none" style={{ cursor: 'pointer' }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: connKey }); setContextMenuTarget({ type: 'connection', from: conn.from, to: conn.to }); }} />
+                                    <path ref={(el) => { if (el) connectionPathsRef.current.set(`${connKey}-hit`, el); else connectionPathsRef.current.delete(`${connKey}-hit`); }} d={d} stroke="transparent" strokeWidth="15" fill="none" style={{ cursor: 'pointer' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: connKey }); setContextMenuTarget({ type: 'connection', from: conn.from, to: conn.to }); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, id: connKey }); setContextMenuTarget({ type: 'connection', from: conn.from, to: conn.to }); }} />
                                 </g>
                             );
                         })}
@@ -2168,36 +2220,30 @@ export default function StudioTab() {
                             </linearGradient>
                         </defs>
                         {connectionStart && (() => {
-                            // Calculate start position based on node position (like original Vite version)
+                            // 计算起点位置（连接点中心）
                             let startX = 0, startY = 0;
                             if (connectionStart.id === 'smart-sequence-dock') {
-                                // For smart sequence dock, use screen coordinates
                                 startX = (connectionStart.screenX - pan.x) / scale;
                                 startY = (connectionStart.screenY - pan.y) / scale;
                             } else {
-                                // For regular nodes, calculate from node position
                                 const startNode = nodes.find(n => n.id === connectionStart.id);
                                 if (!startNode) return null;
-                                const startHeight = startNode.height || getApproxNodeHeight(startNode);
-                                // Output port is on the right side of the node
-                                if (connectionStart.portType === 'output') {
-                                    startX = startNode.x + (startNode.width || 420) + 3;
-                                    startY = startNode.y + startHeight / 2;
-                                } else {
-                                    // Input port is on the left side
-                                    startX = startNode.x - 3;
-                                    startY = startNode.y + startHeight / 2;
-                                }
+                                const w = startNode.width || 420;
+                                const h = startNode.height || getApproxNodeHeight(startNode);
+                                startY = startNode.y + h / 2;
+                                startX = connectionStart.portType === 'output'
+                                    ? startNode.x + w + PORT_OFFSET
+                                    : startNode.x - PORT_OFFSET;
                             }
                             const endX = (mousePos.x - pan.x) / scale;
                             const endY = (mousePos.y - pan.y) / scale;
+                            // 预览线使用简单直线，更直观
                             return (
                                 <path
                                     d={`M ${startX} ${startY} L ${endX} ${endY}`}
                                     stroke={`url(#${theme === 'dark' ? 'previewGradientDark' : 'previewGradient'})`}
                                     strokeWidth={3 / scale}
                                     fill="none"
-                                    className="connection-preview-line"
                                     strokeLinecap="round"
                                 />
                             );
@@ -2398,14 +2444,14 @@ export default function StudioTab() {
                                 <button className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-cyan-500/20 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg flex items-center gap-2 transition-colors" onClick={() => { const targetNode = nodes.find(n => n.id === contextMenu.id); if (targetNode) setClipboard(JSON.parse(JSON.stringify(targetNode))); setContextMenu(null); }}>
                                     <Copy size={12} /> 复制节点
                                 </button>
-                                {(() => { const targetNode = nodes.find(n => n.id === contextMenu.id); if (targetNode) { const isVideo = targetNode.type === NodeType.VIDEO_GENERATOR || targetNode.type === NodeType.VIDEO_ANALYZER; const isImage = targetNode.type === NodeType.IMAGE_GENERATOR || targetNode.type === NodeType.IMAGE_EDITOR; if (isVideo || isImage) { return (<button className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-purple-500/20 hover:text-purple-400 rounded-lg flex items-center gap-2 transition-colors" onClick={() => { replacementTargetRef.current = contextMenu.id ?? null; if (isVideo) replaceVideoInputRef.current?.click(); else replaceImageInputRef.current?.click(); setContextMenu(null); }}> <RefreshCw size={12} /> 替换素材 </button>); } } return null; })()}
+                                {(() => { const targetNode = nodes.find(n => n.id === contextMenu.id); if (targetNode) { const isVideo = targetNode.type === NodeType.VIDEO_GENERATOR; const isImage = targetNode.type === NodeType.IMAGE_GENERATOR || targetNode.type === NodeType.IMAGE_EDITOR; if (isVideo || isImage) { return (<button className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-purple-500/20 hover:text-purple-400 rounded-lg flex items-center gap-2 transition-colors" onClick={() => { replacementTargetRef.current = contextMenu.id ?? null; if (isVideo) replaceVideoInputRef.current?.click(); else replaceImageInputRef.current?.click(); setContextMenu(null); }}> <RefreshCw size={12} /> 替换素材 </button>); } } return null; })()}
                                 <button className="w-full text-left px-3 py-2 text-xs font-medium text-red-400 dark:text-red-400 hover:bg-red-500/20 rounded-lg flex items-center gap-2 transition-colors mt-1" onClick={() => { deleteNodes([contextMenuTarget.id]); setContextMenu(null); }}><Trash2 size={12} /> 删除节点</button>
                             </>
                         )}
                         {contextMenuTarget?.type === 'create' && (
                             <>
                                 <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">创建新节点</div>
-                                {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.AUDIO_GENERATOR, NodeType.VIDEO_ANALYZER, NodeType.IMAGE_EDITOR].map(t => { const ItemIcon = getNodeIcon(t); return (<button key={t} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors" onClick={() => { addNode(t, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale); setContextMenu(null); }}> <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" /> {getNodeNameCN(t)} </button>); })}
+                                {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.AUDIO_GENERATOR, NodeType.IMAGE_EDITOR].map(t => { const ItemIcon = getNodeIcon(t); return (<button key={t} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors" onClick={() => { addNode(t, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale); setContextMenu(null); }}> <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" /> {getNodeNameCN(t)} </button>); })}
                             </>
                         )}
                         {contextMenuTarget?.type === 'group' && (
@@ -2418,25 +2464,34 @@ export default function StudioTab() {
                             <button className="w-full text-left px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 rounded-lg flex items-center gap-2 transition-colors" onClick={() => { setConnections(prev => prev.filter(c => c.from !== contextMenuTarget.from || c.to !== contextMenuTarget.to)); setNodes(prev => prev.map(n => n.id === contextMenuTarget.to ? { ...n, inputs: n.inputs.filter(i => i !== contextMenuTarget.from) } : n)); setContextMenu(null); }}> <Unplug size={12} /> 删除连接线 </button>
                         )}
                         {contextMenuTarget?.type === 'output-action' && (() => {
-                            // 获取源节点，根据媒体类型显示适配的下游节点选项
+                            // 获取源节点，根据类型显示适配的下游节点选项
                             const sourceNode = nodes.find(n => n.id === contextMenuTarget.sourceNodeId);
                             if (!sourceNode) return null;
                             const hasImage = !!sourceNode.data.image;
                             const hasVideo = !!sourceNode.data.videoUri;
+                            const isPromptNode = sourceNode.type === NodeType.PROMPT_INPUT;
+                            const hasPromptContent = isPromptNode && !!(sourceNode.data.prompt && sourceNode.data.prompt.trim());
 
-                            // 根据上游素材类型确定可用的下游节点类型
-                            // generationMode: 用于 VIDEO_FACTORY 节点预设生成模式
+                            // 根据上游类型确定可用的下游节点类型
                             let availableTypes: { type: NodeType, label: string, icon: any, color: string, generationMode?: VideoGenerationMode }[] = [];
-                            if (hasImage) {
+                            if (isPromptNode && hasPromptContent) {
+                                // 提示词节点：可以生成图片/视频/音频
                                 availableTypes = [
+                                    { type: NodeType.IMAGE_GENERATOR, label: '生成图片', icon: ImageIcon, color: 'text-blue-500' },
+                                    { type: NodeType.VIDEO_GENERATOR, label: '生成视频', icon: Film, color: 'text-purple-500' },
+                                    { type: NodeType.AUDIO_GENERATOR, label: '生成音频', icon: Music, color: 'text-pink-500' },
+                                ];
+                            } else if (hasImage) {
+                                availableTypes = [
+                                    { type: NodeType.PROMPT_INPUT, label: '分析图片', icon: FileSearch, color: 'text-emerald-500' },
                                     { type: NodeType.IMAGE_GENERATOR, label: '编辑图片', icon: ImageIcon, color: 'text-blue-500' },
                                     { type: NodeType.VIDEO_GENERATOR, label: '生成视频', icon: Film, color: 'text-purple-500' },
                                 ];
                             } else if (hasVideo) {
                                 availableTypes = [
+                                    { type: NodeType.PROMPT_INPUT, label: '分析视频', icon: FileSearch, color: 'text-emerald-500' },
                                     { type: NodeType.VIDEO_FACTORY, label: '剧情延展', icon: Film, color: 'text-purple-500', generationMode: 'CONTINUE' },
                                     { type: NodeType.VIDEO_FACTORY, label: '局部分镜', icon: Scissors, color: 'text-orange-500', generationMode: 'CUT' },
-                                    { type: NodeType.VIDEO_ANALYZER, label: '视频分析', icon: FileSearch, color: 'text-emerald-500' },
                                 ];
                             }
 
@@ -2445,22 +2500,19 @@ export default function StudioTab() {
                             const handleCreateDownstreamNode = (nodeType: NodeType, generationMode?: VideoGenerationMode) => {
                                 saveHistory();
                                 const nodeWidth = 420;
-                                // 新节点始终使用 16:9 默认比例
-                                const [rw, rh] = [16, 9];
-                                // 局部分镜按钮改为悬浮，不需要额外高度
-                                const extraHeight = 0;
-                                const nodeHeight = nodeType === NodeType.VIDEO_ANALYZER ? 360 : (nodeWidth * rh / rw) + extraHeight;
+                                // 计算节点高度：音频360，视频分析360，其他16:9
+                                const nodeHeight = nodeType === NodeType.AUDIO_GENERATOR
+                                    ? 360
+                                    : Math.round(nodeWidth * 9 / 16);
 
                                 // 鼠标释放位置对应新节点的左侧连接点位置
-                                // 左连接点相对节点: x = -12px, y = 节点高度/2
                                 const newX = contextMenuTarget.canvasX !== undefined
-                                    ? contextMenuTarget.canvasX + 12  // 左连接点在节点左边缘 -12px 处
+                                    ? contextMenuTarget.canvasX + 12
                                     : sourceNode.x + (sourceNode.width || 420) + 80;
                                 const newY = contextMenuTarget.canvasY !== undefined
-                                    ? contextMenuTarget.canvasY - nodeHeight / 2  // 连接点在垂直中心
+                                    ? contextMenuTarget.canvasY - nodeHeight / 2
                                     : sourceNode.y;
 
-                                // 创建新节点
                                 const newNodeId = `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
                                 // 根据生成模式设置标题
@@ -2470,17 +2522,26 @@ export default function StudioTab() {
                                         if (generationMode === 'CUT') return '局部分镜';
                                     }
                                     const typeMap: Record<string, string> = {
+                                        [NodeType.PROMPT_INPUT]: '素材分析',
                                         [NodeType.IMAGE_GENERATOR]: '图片生成',
                                         [NodeType.VIDEO_GENERATOR]: '视频生成',
                                         [NodeType.VIDEO_FACTORY]: '视频工厂',
-                                        [NodeType.VIDEO_ANALYZER]: '视频分析',
+                                        [NodeType.AUDIO_GENERATOR]: '音频生成',
                                     };
                                     return typeMap[nodeType] || '新节点';
                                 };
 
-                                const defaultModel = nodeType === NodeType.VIDEO_GENERATOR ? 'veo3.1' :
-                                    nodeType === NodeType.VIDEO_ANALYZER ? 'gemini-2.5-flash' :
-                                        'veo3.1'; // VIDEO_FACTORY 也使用视频模型
+                                // 根据节点类型设置默认模型
+                                const getDefaultModel = () => {
+                                    if (nodeType === NodeType.PROMPT_INPUT) return 'gemini-2.5-flash';
+                                    if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
+                                    if (nodeType === NodeType.VIDEO_GENERATOR) return 'veo3.1';
+                                    if (nodeType === NodeType.VIDEO_FACTORY) return 'veo3.1';
+                                    return undefined;
+                                };
+
+                                // 如果源节点是提示词节点，将提示词注入到下游节点
+                                const promptToInject = isPromptNode ? sourceNode.data.prompt : undefined;
 
                                 const newNode: AppNode = {
                                     id: newNodeId,
@@ -2492,9 +2553,10 @@ export default function StudioTab() {
                                     title: getTitleByMode(),
                                     status: NodeStatus.IDLE,
                                     data: {
-                                        model: defaultModel,
-                                        aspectRatio: '16:9', // 新节点始终使用 16:9
-                                        ...(generationMode && { generationMode }), // 设置预选的生成模式
+                                        model: getDefaultModel(),
+                                        aspectRatio: '16:9',
+                                        ...(generationMode && { generationMode }),
+                                        ...(promptToInject && { prompt: promptToInject }), // 注入提示词
                                     },
                                     inputs: [sourceNode.id]
                                 };
@@ -2504,15 +2566,18 @@ export default function StudioTab() {
                                 setContextMenu(null);
                             };
 
+                            // 菜单标题
+                            const menuTitle = isPromptNode ? '创建生成节点' : (hasImage ? '图片后续操作' : '视频后续操作');
+
                             return (
                                 <>
-                                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                        {hasImage ? '图片' : '视频'}后续操作
+                                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                        {menuTitle}
                                     </div>
                                     {availableTypes.map(({ type, label, icon: Icon, color, generationMode }, idx) => (
                                         <button
                                             key={`${type}-${generationMode || idx}`}
-                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2.5 transition-colors"
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors"
                                             onClick={() => handleCreateDownstreamNode(type, generationMode)}
                                         >
                                             <Icon size={12} className={color} /> {label}
@@ -2522,9 +2587,12 @@ export default function StudioTab() {
                             );
                         })()}
                         {contextMenuTarget?.type === 'input-action' && (() => {
-                            // 左连接点双击：创建上游输入节点（素材或描述）
+                            // 左连接点双击：创建上游输入节点
                             const targetNode = nodes.find(n => n.id === contextMenuTarget.targetNodeId);
                             if (!targetNode) return null;
+
+                            // 判断目标节点类型：提示词节点只能连接素材用于分析
+                            const isPromptNode = targetNode.type === NodeType.PROMPT_INPUT;
 
                             const handleCreateUpstreamNode = (type: NodeType) => {
                                 saveHistory();
@@ -2565,42 +2633,47 @@ export default function StudioTab() {
                                 setNodes(prev => [...prev, newNode]);
                                 // 自动连接：新节点 → 目标节点
                                 setConnections(prev => [...prev, { from: newNodeId, to: targetNode.id }]);
+                                // 同时更新目标节点的 inputs
+                                setNodes(prev => prev.map(n => n.id === targetNode.id ? { ...n, inputs: [...n.inputs, newNodeId] } : n));
                                 setContextMenu(null);
                             };
 
                             return (
                                 <>
-                                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-teal-600">
-                                        添加输入节点
+                                    <div className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${isPromptNode ? 'text-amber-600 dark:text-amber-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                                        {isPromptNode ? '添加媒体分析' : '添加输入节点'}
                                     </div>
+                                    {/* 非提示词节点才显示文本选项 */}
+                                    {!isPromptNode && (
+                                        <button
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg flex items-center gap-2.5 transition-colors"
+                                            onClick={() => handleCreateUpstreamNode(NodeType.PROMPT_INPUT)}
+                                        >
+                                            <Type size={12} className="text-amber-500 dark:text-amber-400" /> 文本
+                                        </button>
+                                    )}
                                     <button
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-amber-50 rounded-lg flex items-center gap-2.5 transition-colors"
-                                        onClick={() => handleCreateUpstreamNode(NodeType.PROMPT_INPUT)}
-                                    >
-                                        <Type size={12} className="text-amber-500" /> 文本
-                                    </button>
-                                    <button
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-blue-50 rounded-lg flex items-center gap-2.5 transition-colors"
+                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg flex items-center gap-2.5 transition-colors"
                                         onClick={() => handleCreateUpstreamNode(NodeType.IMAGE_ASSET)}
                                     >
-                                        <ImageIcon size={12} className="text-blue-500" /> 图片
+                                        <ImageIcon size={12} className="text-blue-500 dark:text-blue-400" /> {isPromptNode ? '分析图片' : '图片'}
                                     </button>
                                     <button
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-green-50 rounded-lg flex items-center gap-2.5 transition-colors"
+                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg flex items-center gap-2.5 transition-colors"
                                         onClick={() => handleCreateUpstreamNode(NodeType.VIDEO_ASSET)}
                                     >
-                                        <VideoIcon size={12} className="text-green-500" /> 视频
+                                        <VideoIcon size={12} className="text-green-500 dark:text-green-400" /> {isPromptNode ? '分析视频' : '视频'}
                                     </button>
                                 </>
                             );
                         })()}
                         {contextMenuTarget?.type === 'multi-selection' && (
                             <>
-                                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                     已选中 {contextMenuTarget.ids?.length || 0} 个节点
                                 </div>
                                 <button
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-blue-500/20 hover:text-blue-600 rounded-lg flex items-center gap-2 transition-colors"
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-blue-500/20 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg flex items-center gap-2 transition-colors"
                                     onClick={() => {
                                         const selectedNodes = nodes.filter(n => contextMenuTarget.ids?.includes(n.id));
                                         if (selectedNodes.length > 0) {

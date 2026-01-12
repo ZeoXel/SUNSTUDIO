@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     Plus, RotateCcw, History, MessageSquare, X,
     ImageIcon, Video as VideoIcon, Film,
-    Edit, Trash2, ScanFace, Brush, Type,
+    Edit, Trash2, Brush, Type,
     Clapperboard, Mic2, Layers, Sun, Moon
 } from 'lucide-react';
 import { NodeType, Canvas } from '@/types';
@@ -47,7 +47,6 @@ const getNodeNameCN = (t: string) => {
         case NodeType.VIDEO_GENERATOR: return '视频生成';
         case NodeType.VIDEO_FACTORY: return '视频工厂';
         case NodeType.AUDIO_GENERATOR: return '灵感音乐';
-        case NodeType.VIDEO_ANALYZER: return '视频分析';
         case NodeType.IMAGE_EDITOR: return '图像编辑';
         default: return t;
     }
@@ -62,7 +61,6 @@ const getNodeIcon = (t: string) => {
         case NodeType.VIDEO_GENERATOR: return Film;
         case NodeType.VIDEO_FACTORY: return Clapperboard;
         case NodeType.AUDIO_GENERATOR: return Mic2;
-        case NodeType.VIDEO_ANALYZER: return ScanFace;
         case NodeType.IMAGE_EDITOR: return Brush;
         default: return Plus;
     }
@@ -82,7 +80,6 @@ const getNodeColor = (type: string) => {
         case NodeType.VIDEO_GENERATOR: return '#a78bfa'; // violet
         case NodeType.VIDEO_FACTORY: return '#f472b6'; // pink
         case NodeType.AUDIO_GENERATOR: return '#fb923c'; // orange
-        case NodeType.VIDEO_ANALYZER: return '#4ade80'; // green
         case NodeType.IMAGE_EDITOR: return '#facc15'; // yellow
         default: return '#cbd5e1';
     }
@@ -477,7 +474,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     </span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-                    {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.AUDIO_GENERATOR, NodeType.VIDEO_ANALYZER, NodeType.IMAGE_EDITOR].map(t => {
+                    {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.AUDIO_GENERATOR, NodeType.IMAGE_EDITOR].map(t => {
                         const ItemIcon = getNodeIcon(t);
                         return (
                             <button

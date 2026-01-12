@@ -746,6 +746,31 @@ export const analyzeVideo = async (videoBase64OrUrl: string, prompt: string, mod
     return response.text || "Analysis failed";
 };
 
+export const analyzeImage = async (imageBase64: string, prompt: string, model: string = 'gemini-2.5-flash'): Promise<string> => {
+    const ai = getClient();
+    let inlineData: any = null;
+
+    if (imageBase64.startsWith('data:')) {
+        const mime = imageBase64.match(/^data:(image\/\w+);base64,/)?.[1] || 'image/png';
+        const data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+        inlineData = { mimeType: mime, data };
+    } else {
+        throw new Error("请提供 Base64 格式的图片数据");
+    }
+
+    const response = await ai.models.generateContent({
+        model: model,
+        contents: {
+            parts: [
+                { inlineData },
+                { text: prompt }
+            ]
+        }
+    });
+
+    return response.text || "分析失败";
+};
+
 export const editImageWithText = async (imageBase64: string, prompt: string, model: string): Promise<string> => {
     // Reuse image generation with input image
     const imgs = await generateImageFromText(prompt, model, [imageBase64], { count: 1 });

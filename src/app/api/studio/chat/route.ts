@@ -22,15 +22,21 @@ const getSystemPrompt = (mode: string): string => {
     switch (mode) {
         case 'prompt_enhancer':
         case 'prompt_generator':
-            return `你是一位专业的 AI 提示词优化专家。用户会给你一个简短的想法或描述，你需要将它扩展成一个详细、生动、专业的 AI 图像/视频生成提示词。
+            return `你是一位专业的 AI 提示词优化专家。你的任务是将用户的想法、描述或素材分析转化为详细、专业的 AI 图像/视频生成提示词。
+
+**重要：必须使用中文输出。**
+
+工作模式：
+- 如果用户提供文本描述：将其扩展为专业提示词
+- 如果用户提供图片/视频素材：分析其视觉元素并生成对应的提示词
 
 要求：
 1. 保留用户的核心意图和风格倾向
-2. 添加丰富的视觉细节：光影效果、色彩搭配、构图方式、氛围营造、材质质感等
-3. 使用专业的视觉/艺术/摄影术语
+2. 添加丰富的视觉细节：光影效果、色彩搭配、构图方式、氛围营造、材质质感、运动方式等
+3. 使用专业的视觉/艺术/摄影/影视术语
 4. 长度适中，通常 3-5 句话，150-300字
 5. 直接输出优化后的提示词，不要添加任何解释或前缀
-6. 如果用户输入已经很详细，在此基础上进一步润色和专业化
+6. 如果分析视频，着重描述运动、节奏、镜头语言等动态元素
 
 示例：
 用户输入：一只猫在窗边
@@ -73,11 +79,12 @@ const getSystemPrompt = (mode: string): string => {
 
 // 默认模型
 const DEFAULT_MODEL = 'gpt-4o-mini';
+const VISION_MODEL = 'gpt-4o'; // 多模态模型
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { messages, mode = 'default' } = body;
+        const { messages, mode = 'default', image, video, model: requestedModel } = body;
 
         if (!messages || !Array.isArray(messages)) {
             return NextResponse.json({ error: 'messages is required and must be an array' }, { status: 400 });
@@ -89,17 +96,57 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'API Key未配置' }, { status: 500 });
         }
 
+        // 判断是否有多模态内容
+        const hasMedia = !!(image || video);
+        // 支持自定义模型，否则根据是否有媒体自动选择
+        const model = requestedModel || (hasMedia ? VISION_MODEL : DEFAULT_MODEL);
+
         // 构建 OpenAI 格式的消息
         const systemPrompt = getSystemPrompt(mode);
-        const openaiMessages = [
-            { role: 'system', content: systemPrompt },
-            ...messages.map((m: { role: string; text: string }) => ({
-                role: m.role === 'model' ? 'assistant' : 'user',
-                content: m.text
-            }))
+        const openaiMessages: any[] = [
+            { role: 'system', content: systemPrompt }
         ];
 
-        console.log(`[Studio Chat API] Mode: ${mode}, Messages: ${messages.length}`);
+        // 处理用户消息
+        for (const m of messages) {
+            const role = m.role === 'model' ? 'assistant' : 'user';
+
+            if (hasMedia && role === 'user') {
+                // 多模态消息格式
+                const content: any[] = [];
+
+                // 添加文本（放在最前面）
+                if (m.text) {
+                    content.push({ type: 'text', text: m.text });
+                }
+
+                // 添加图片（使用 image_url 类型）
+                if (image) {
+                    content.push({
+                        type: 'image_url',
+                        image_url: { url: image }
+                    });
+                }
+
+                // 添加视频（也使用 image_url 类型，API 会根据 URL 内容自动识别）
+                if (video) {
+                    content.push({
+                        type: 'image_url',
+                        image_url: { url: video }
+                    });
+                }
+
+                openaiMessages.push({ role, content });
+            } else {
+                // 纯文本消息
+                openaiMessages.push({ role, content: m.text });
+            }
+        }
+
+        console.log(`[Studio Chat API] Mode: ${mode}, Model: ${model}, HasMedia: ${hasMedia}, HasVideo: ${!!video}, HasImage: ${!!image}`);
+        if (video) {
+            console.log(`[Studio Chat API] Video URL type: ${video.substring(0, 50)}...`);
+        }
 
         const response = await fetch(`${baseUrl}/chat/completions`, {
             method: 'POST',
@@ -108,7 +155,7 @@ export async function POST(request: NextRequest) {
                 'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: DEFAULT_MODEL,
+                model,
                 messages: openaiMessages,
                 temperature: mode === 'prompt_enhancer' ? 0.7 : 0.8,
                 max_tokens: 2048,
@@ -116,8 +163,14 @@ export async function POST(request: NextRequest) {
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            console.error('[Studio Chat API] Error:', errorData);
+            const errorText = await response.text();
+            console.error('[Studio Chat API] Error Response:', errorText);
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { error: errorText || 'Unknown error' };
+            }
             return NextResponse.json(
                 { error: errorData.error?.message || errorData.error || `API错误: ${response.status}` },
                 { status: response.status }

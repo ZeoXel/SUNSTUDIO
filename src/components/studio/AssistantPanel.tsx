@@ -53,7 +53,7 @@ const parseInlineStyles = (text: string): React.ReactNode[] => {
     if (part.startsWith('**') && part.endsWith('**')) {
       const content = part.slice(2, -2);
       // Highlight key values or important labels with brighter white/cyan
-      return <span key={i} className="text-slate-900 font-bold mx-0.5">{content}</span>;
+      return <span key={i} className="text-slate-900 dark:text-slate-100 font-bold mx-0.5">{content}</span>;
     }
     return part;
   });
@@ -76,7 +76,7 @@ const renderFormattedMessage = (text: string) => {
     // H1 (# Title)
     if (line.startsWith('# ')) {
       elements.push(
-        <h1 key={key} className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 mt-5 mb-3 border-b border-slate-300 pb-2">
+        <h1 key={key} className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 mt-5 mb-3 border-b border-slate-300 dark:border-slate-600 pb-2">
           {line.replace(/^#\s/, '')}
         </h1>
       );
@@ -86,7 +86,7 @@ const renderFormattedMessage = (text: string) => {
     // H2 (## Title)
     if (line.startsWith('## ')) {
       elements.push(
-        <h2 key={key} className="text-sm font-bold text-slate-900 mt-4 mb-2 flex items-center gap-2">
+        <h2 key={key} className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-4 mb-2 flex items-center gap-2">
           <span className="w-1 h-4 bg-blue-500 rounded-full inline-block" />
           {line.replace(/^##\s/, '')}
         </h2>
@@ -98,7 +98,7 @@ const renderFormattedMessage = (text: string) => {
     if (line.startsWith('### ') || line.startsWith('#### ')) {
       const content = line.replace(/^#+\s/, '');
       elements.push(
-        <h3 key={key} className="text-xs font-bold text-blue-300 mt-3 mb-1 uppercase tracking-wider">
+        <h3 key={key} className="text-xs font-bold text-blue-500 dark:text-blue-300 mt-3 mb-1 uppercase tracking-wider">
           {content}
         </h3>
       );
@@ -110,8 +110,8 @@ const renderFormattedMessage = (text: string) => {
       const content = trimmed.replace(/^[\*\-]\s/, '');
       elements.push(
         <div key={key} className="flex gap-2 ml-1 mb-1.5 items-start group/list">
-          <span className="w-1.5 h-1.5 rounded-full bg-slate-200 mt-[7px] shrink-0 group-hover/list:bg-cyan-400 transition-colors" />
-          <div className="text-[13px] leading-relaxed text-slate-600 flex-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 mt-[7px] shrink-0 group-hover/list:bg-cyan-400 transition-colors" />
+          <div className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-300 flex-1">
             {parseInlineStyles(content)}
           </div>
         </div>
@@ -125,8 +125,8 @@ const renderFormattedMessage = (text: string) => {
       const content = rest.join('. ');
       elements.push(
         <div key={key} className="flex gap-2 ml-1 mb-1.5 items-start">
-          <span className="text-xs font-mono text-blue-500/80 mt-[2px] shrink-0">{num}.</span>
-          <div className="text-[13px] leading-relaxed text-slate-600 flex-1">
+          <span className="text-xs font-mono text-blue-500/80 dark:text-blue-400/80 mt-[2px] shrink-0">{num}.</span>
+          <div className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-300 flex-1">
             {parseInlineStyles(content)}
           </div>
         </div>
@@ -138,7 +138,7 @@ const renderFormattedMessage = (text: string) => {
     if (trimmed.startsWith('> ')) {
       const content = trimmed.replace(/^>\s/, '');
       elements.push(
-        <div key={key} className="pl-3 border-l-2 border-blue-500/30 italic text-slate-600 my-2 text-xs">
+        <div key={key} className="pl-3 border-l-2 border-blue-500/30 italic text-slate-600 dark:text-slate-400 my-2 text-xs">
           {parseInlineStyles(content)}
         </div>
       );
@@ -147,7 +147,7 @@ const renderFormattedMessage = (text: string) => {
 
     // Normal Paragraphs
     elements.push(
-      <div key={key} className="text-[13px] leading-relaxed text-slate-600 mb-1">
+      <div key={key} className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-300 mb-1">
         {parseInlineStyles(line)}
       </div>
     );
@@ -239,22 +239,22 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
   return (
     <div
       ref={panelRef}
-      className={`fixed right-6 top-1/2 -translate-y-1/2 h-[85vh] w-[420px] bg-white/95 backdrop-blur-3xl rounded-[24px] border border-slate-300 shadow-2xl z-40 flex flex-col overflow-hidden ${SPRING_ANIMATION} ${isOpen ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-10 scale-95 pointer-events-none'}`}
+      className={`fixed right-6 top-1/2 -translate-y-1/2 h-[85vh] w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl rounded-[24px] border border-slate-300 dark:border-slate-700 shadow-2xl z-40 flex flex-col overflow-hidden ${SPRING_ANIMATION} ${isOpen ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-10 scale-95 pointer-events-none'}`}
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 backdrop-blur-md z-10 shrink-0">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/80 backdrop-blur-md z-10 shrink-0">
         <div className="flex items-center gap-1">
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-900 transition-colors group"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors group"
           >
             <X size={14} className="group-hover:scale-110 transition-transform" />
           </button>
           <button
             onClick={handleClearChat}
-            className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-red-400 transition-colors group"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400 hover:text-red-400 transition-colors group"
             title="清空对话"
           >
             <Eraser size={14} className="group-hover:scale-110 transition-transform" />
@@ -262,25 +262,25 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
         </div>
         <div className="flex items-center gap-2.5">
           <div className="flex flex-col items-end">
-            <span className="text-xs font-bold text-slate-700 tracking-wide">AI 创意助手</span>
-            <span className="text-[10px] text-slate-500 font-medium">提示词优化 & 灵感生成</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 tracking-wide">AI 创意助手</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">提示词优化 & 灵感生成</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 flex items-center justify-center border border-slate-300 shadow-inner">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 flex items-center justify-center border border-slate-300 dark:border-slate-600 shadow-inner">
             <Sparkles size={14} className="text-blue-400" />
           </div>
         </div>
       </div>
 
       {/* Chat Content */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar bg-slate-50/50">
+      <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar bg-slate-50/50 dark:bg-slate-800/50">
         {messages.map((m, i) => (
           <div key={i} className={`flex w-full ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`flex flex-col max-w-[92%] gap-1.5 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
 
               {/* Role Label */}
               <div className="flex items-center gap-2 px-1">
-                {m.role === 'model' && <span className="text-[10px] font-bold text-blue-500/80 uppercase tracking-wider">ls-studio AI</span>}
-                {m.role === 'user' && <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">You</span>}
+                {m.role === 'model' && <span className="text-[10px] font-bold text-blue-500/80 dark:text-blue-400/80 uppercase tracking-wider">ls-studio AI</span>}
+                {m.role === 'user' && <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">You</span>}
               </div>
 
               {/* Message Bubble */}
@@ -289,8 +289,8 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
                   className={`
                             relative px-5 py-4 rounded-2xl shadow-sm border select-text cursor-text
                             ${m.role === 'user'
-                      ? 'bg-[#ffffff] border-slate-300 text-slate-100 rounded-tr-sm'
-                      : 'bg-white border-slate-200 text-slate-600 rounded-tl-sm w-full pr-10' // Add padding right for copy button
+                      ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-tr-sm'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-tl-sm w-full pr-10' // Add padding right for copy button
                     }
                         `}
                 >
@@ -299,7 +299,7 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
                   {/* Copy Button (Inside Bubble for reliability) */}
                   <button
                     onClick={() => handleCopy(m.text, i)}
-                    className={`absolute top-2 right-2 p-1.5 rounded-full bg-slate-100 hover:bg-white/80 border border-slate-200 text-slate-600 opacity-0 group-hover:opacity-100 transition-all hover:text-slate-900 hover:scale-110 z-10`}
+                    className={`absolute top-2 right-2 p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-white/80 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 opacity-0 group-hover:opacity-100 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:scale-110 z-10`}
                     title="复制内容"
                   >
                     {copiedIndex === i ? <span className="text-[10px] font-bold text-green-400">OK</span> : <Copy size={10} />}
@@ -313,12 +313,12 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
         {isLoading && (
           <div className="flex justify-start w-full animate-in fade-in slide-in-from-bottom-2">
             <div className="flex flex-col gap-2 max-w-[85%]">
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-1 ${isThinkingMode ? 'text-indigo-400' : 'text-blue-500/80'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-1 ${isThinkingMode ? 'text-indigo-400' : 'text-blue-500/80 dark:text-blue-400/80'}`}>
                 {isThinkingMode ? 'Deep Thinking' : 'Thinking'}
               </span>
-              <div className={`px-5 py-4 bg-white border rounded-2xl rounded-tl-sm flex items-center gap-3 w-fit shadow-lg ${isThinkingMode ? 'border-indigo-500/30 shadow-indigo-900/20' : 'border-slate-200 shadow-cyan-900/10'}`}>
+              <div className={`px-5 py-4 bg-white dark:bg-slate-800 border rounded-2xl rounded-tl-sm flex items-center gap-3 w-fit shadow-lg ${isThinkingMode ? 'border-indigo-500/30 shadow-indigo-900/20' : 'border-slate-200 dark:border-slate-700 shadow-cyan-900/10'}`}>
                 <Loader2 size={16} className={`animate-spin ${isThinkingMode ? 'text-indigo-400' : 'text-blue-500'}`} />
-                <span className={`text-xs font-medium tracking-wide ${isThinkingMode ? 'text-indigo-200' : 'text-slate-600'}`}>
+                <span className={`text-xs font-medium tracking-wide ${isThinkingMode ? 'text-indigo-200' : 'text-slate-600 dark:text-slate-300'}`}>
                   {isThinkingMode ? "深度思考中..." : isStoryboardActive ? "正在规划分镜..." : isHelpMeWriteActive ? "正在润色文本..." : "正在思考创意..."}
                 </span>
               </div>
@@ -329,14 +329,14 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white border-t border-slate-200 shrink-0 flex flex-col gap-2">
+      <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 shrink-0 flex flex-col gap-2">
 
         {/* Tool Bar */}
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setIsThinkingMode(!isThinkingMode); setIsStoryboardActive(false); setIsHelpMeWriteActive(false); }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${isThinkingMode ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-slate-50 text-slate-500 border-transparent hover:text-slate-600'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${isThinkingMode ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-slate-300'}`}
             >
               <Brain size={12} className={isThinkingMode ? "animate-pulse" : ""} />
               <span>深度思考模式</span>
@@ -344,7 +344,7 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
 
             <button
               onClick={() => { setIsStoryboardActive(!isStoryboardActive); setIsThinkingMode(false); setIsHelpMeWriteActive(false); }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${isStoryboardActive ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-slate-50 text-slate-500 border-transparent hover:text-slate-600'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${isStoryboardActive ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-slate-300'}`}
             >
               <PenLine size={12} />
               <span>分镜脚本</span>
@@ -352,7 +352,7 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
 
             <button
               onClick={() => { setIsHelpMeWriteActive(!isHelpMeWriteActive); setIsThinkingMode(false); setIsStoryboardActive(false); }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${isHelpMeWriteActive ? 'bg-pink-500/20 text-pink-300 border-pink-500/50 shadow-[0_0_10px_rgba(236,72,153,0.2)]' : 'bg-slate-50 text-slate-500 border-transparent hover:text-slate-600'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${isHelpMeWriteActive ? 'bg-pink-500/20 text-pink-300 border-pink-500/50 shadow-[0_0_10px_rgba(236,72,153,0.2)]' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-slate-300'}`}
             >
               <Wand2 size={12} />
               <span>帮我写</span>
@@ -364,7 +364,7 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
 
         <div className="relative group/input">
           <textarea
-            className="w-full bg-slate-100 border border-slate-300 rounded-[20px] pl-4 pr-12 py-3.5 text-xs text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white/70 focus:border-blue-500/30 transition-all resize-none custom-scrollbar leading-5"
+            className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-[20px] pl-4 pr-12 py-3.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:bg-white/70 dark:focus:bg-slate-700 focus:border-blue-500/30 dark:focus:border-blue-500/50 transition-all resize-none custom-scrollbar leading-5"
             placeholder={
               isStoryboardActive ? "输入视频描述，我将为您生成专业分镜脚本..." :
                 isThinkingMode ? "输入复杂问题，进行深度逻辑推理..." :
@@ -385,12 +385,12 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ isOpen, onClose 
           <button
             onClick={handleSendMessage}
             disabled={!input.trim() || isLoading}
-            className={`absolute right-2 top-2 p-2 rounded-full transition-all duration-300 ${input.trim() && !isLoading ? 'bg-blue-500 text-black hover:bg-cyan-400 hover:scale-105 shadow-lg shadow-cyan-500/20' : 'bg-slate-50 text-slate-600 cursor-not-allowed'}`}
+            className={`absolute right-2 top-2 p-2 rounded-full transition-all duration-300 ${input.trim() && !isLoading ? 'bg-blue-500 text-white hover:bg-cyan-400 hover:scale-105 shadow-lg shadow-cyan-500/20' : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-400 cursor-not-allowed'}`}
           >
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <CornerDownLeft size={16} />}
           </button>
         </div>
-        <div className="text-[9px] text-slate-600 text-center font-medium tracking-wide">
+        <div className="text-[9px] text-slate-600 dark:text-slate-400 text-center font-medium tracking-wide">
           Shift + Enter 换行
         </div>
       </div>

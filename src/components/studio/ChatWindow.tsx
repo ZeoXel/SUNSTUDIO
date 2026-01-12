@@ -202,7 +202,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
             // H1
             if (line.startsWith('# ')) {
                 elements.push(
-                    <h1 key={key} className="text-base font-bold text-slate-800 mt-4 mb-2 border-b border-slate-200 pb-1">
+                    <h1 key={key} className="text-base font-bold text-slate-800 dark:text-slate-100 mt-4 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
                         {line.replace(/^#\s/, '')}
                     </h1>
                 );
@@ -212,7 +212,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
             // H2
             if (line.startsWith('## ')) {
                 elements.push(
-                    <h2 key={key} className="text-sm font-bold text-slate-700 mt-3 mb-1.5 flex items-center gap-2">
+                    <h2 key={key} className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-3 mb-1.5 flex items-center gap-2">
                         <span className="w-1 h-3.5 bg-blue-500 rounded-full" />
                         {line.replace(/^##\s/, '')}
                     </h2>
@@ -225,8 +225,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
                 const content = trimmed.replace(/^[\*\-]\s/, '');
                 elements.push(
                     <div key={key} className="flex gap-2 ml-1 mb-1 items-start">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-[6px] shrink-0" />
-                        <span className="text-[13px] leading-relaxed text-slate-600">{content}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 mt-[6px] shrink-0" />
+                        <span className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">{content}</span>
                     </div>
                 );
                 return;
@@ -234,7 +234,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
 
             // Normal text
             elements.push(
-                <p key={key} className="text-[13px] leading-relaxed text-slate-600 mb-1">
+                <p key={key} className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-300 mb-1">
                     {line}
                 </p>
             );
@@ -252,7 +252,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
                         key={file.file_id}
                         href={capeService.getFileUrl(file.file_id)}
                         download={file.original_name}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg text-xs text-blue-600 transition-colors"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg text-xs text-blue-600 dark:text-blue-400 transition-colors"
                     >
                         <Download size={12} />
                         <span className="max-w-[120px] truncate">{file.original_name}</span>
@@ -260,7 +260,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
                 ) : (
                     <div
                         key={file.file_id}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 rounded-lg text-xs text-slate-600"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs text-slate-600 dark:text-slate-300"
                     >
                         <FileText size={12} />
                         <span className="max-w-[100px] truncate">{file.original_name}</span>
@@ -275,33 +275,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
 
     return (
         <div
-            className={`fixed right-6 top-1/2 -translate-y-1/2 h-[85vh] w-[420px] bg-white/95 backdrop-blur-3xl rounded-[24px] border border-slate-200 shadow-2xl z-40 flex flex-col overflow-hidden ${SPRING_ANIMATION} ${isOpen ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-10 scale-95 pointer-events-none'}`}
+            className={`fixed right-6 top-1/2 -translate-y-1/2 h-[85vh] w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl rounded-[24px] border border-slate-200 dark:border-slate-700 shadow-2xl z-40 flex flex-col overflow-hidden ${SPRING_ANIMATION} ${isOpen ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-10 scale-95 pointer-events-none'}`}
             onMouseDown={(e) => e.stopPropagation()}
         >
             {/* Header */}
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 backdrop-blur-md shrink-0">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-md shrink-0">
                 <div className="flex items-center gap-1">
                     <Button variant="ghost" size="sm" shape="circle" onClick={onClose} icon={<X size={14} />} />
                     <Button variant="danger" size="sm" shape="circle" onClick={handleClear} icon={<Eraser size={14} />} title="清空对话" />
                 </div>
                 <div className="flex items-center gap-2.5">
                     <div className="flex flex-col items-end">
-                        <span className="text-xs font-bold text-slate-700">Cape AI</span>
-                        <span className="text-[10px] text-slate-400">文档处理 & 内容创作</span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Cape AI</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">文档处理 & 内容创作</span>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500/20 to-cyan-500/20 flex items-center justify-center border border-slate-200">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500/20 to-cyan-500/20 flex items-center justify-center border border-slate-200 dark:border-slate-600">
                         <Sparkles size={14} className="text-blue-500" />
                     </div>
                 </div>
             </div>
 
             {/* Chat Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/30">
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/30 dark:bg-slate-800/30">
                 {messages.map((m, i) => (
                     <div key={i} className={`flex w-full ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`flex flex-col max-w-[90%] gap-1 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                             {/* Role Label */}
-                            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider px-1">
+                            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
                                 {m.role === 'user' ? 'You' : 'Cape AI'}
                             </span>
 
@@ -309,11 +309,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
                             <div className="group relative">
                                 <div className={`px-4 py-3 rounded-2xl shadow-sm border select-text ${
                                     m.role === 'user'
-                                        ? 'bg-white border-slate-200 rounded-tr-sm'
-                                        : 'bg-white border-slate-100 rounded-tl-sm'
+                                        ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 rounded-tr-sm'
+                                        : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 rounded-tl-sm'
                                 }`}>
                                     {m.role === 'model' ? renderFormattedMessage(m.text) : (
-                                        <p className="text-[13px] leading-relaxed text-slate-700">{m.text}</p>
+                                        <p className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-200">{m.text}</p>
                                     )}
                                     {/* 用户上传的文件 */}
                                     {m.role === 'user' && m.files && renderFiles(m.files, false)}
@@ -324,7 +324,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
                                 {/* Copy Button */}
                                 <button
                                     onClick={() => handleCopy(m.text, i)}
-                                    className={`absolute top-2 ${m.role === 'user' ? '-left-7' : '-right-7'} p-1 rounded-full bg-white border border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100 transition-all hover:text-slate-600 hover:scale-110`}
+                                    className={`absolute top-2 ${m.role === 'user' ? '-left-7' : '-right-7'} p-1 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-all hover:text-slate-600 dark:hover:text-slate-300 hover:scale-110`}
                                 >
                                     {copiedIndex === i ? <span className="text-[9px] text-green-500">✓</span> : <Copy size={10} />}
                                 </button>
@@ -337,7 +337,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
                 {isLoading && (
                     <div className="flex justify-start">
                         <div className="flex flex-col gap-1 items-start">
-                            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider px-1">Cape AI</span>
+                            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">Cape AI</span>
                             <LoadingBubble text={loadingText} />
                         </div>
                     </div>
@@ -348,9 +348,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
 
             {/* 已上传文件预览 */}
             {uploadedFiles.length > 0 && (
-                <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-1.5">
+                <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex flex-wrap gap-1.5">
                     {uploadedFiles.map(file => (
-                        <div key={file.file_id} className="flex items-center gap-1 px-2 py-1 bg-blue-50 rounded text-xs text-blue-600">
+                        <div key={file.file_id} className="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded text-xs text-blue-600 dark:text-blue-400">
                             <FileText size={10} />
                             <span className="max-w-[80px] truncate">{file.original_name}</span>
                             <button onClick={() => removeFile(file.file_id)} className="hover:text-red-500">
@@ -362,7 +362,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
             )}
 
             {/* Input Area */}
-            <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+            <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-700 shrink-0">
                 <div className="flex items-end gap-2">
                     {/* 文件上传按钮 */}
                     <input
