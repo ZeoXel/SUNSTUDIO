@@ -2098,19 +2098,23 @@ export default function StudioTab() {
 
                                 {/* Logo & Title */}
                                 <div className="flex items-center gap-4 mb-8">
-                                    {/* Logo - 纯图标，去除圆角矩形背景 */}
-                                    <div className="relative w-12 h-12 flex items-center justify-center">
-                                        <Sparkles size={40} strokeWidth={1.5} className="text-slate-800 dark:text-slate-100 drop-shadow-sm" />
+                                    {/* Logo - 根据主题切换 */}
+                                    <div className="relative w-16 h-16 flex items-center justify-center">
+                                        <img
+                                            src={theme === 'dark' ? '/logolight.svg' : '/logodark.svg'}
+                                            alt="ZeoCanvas Logo"
+                                            className="w-14 h-14 object-contain"
+                                        />
                                     </div>
                                     <div className="flex flex-col">
                                         <h1 className="text-4xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
-                                            LSAI <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500 font-extrabold">Studio</span>
+                                            Zeo<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500 font-extrabold">Canvas</span>
                                         </h1>
                                         <div className="flex items-center gap-2 mt-1">
                                             <span className="h-1 w-1 rounded-full bg-amber-400" />
                                             <span className="h-1 w-1 rounded-full bg-blue-400" />
                                             <span className="h-1 w-1 rounded-full bg-emerald-400" />
-                                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Creative Canvas</span>
+                                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">AI Creative Workspace</span>
                                         </div>
                                     </div>
                                 </div>

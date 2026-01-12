@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Studio - AI Creative Workflow",
-  description: "AI-powered creative workflow studio",
+  title: "ZeoCanvas - AI Creative Workspace",
+  description: "ZeoCanvas - AI-powered creative workspace",
+  icons: {
+    icon: "/logodark.svg",
+    shortcut: "/logodark.svg",
+    apple: "/logodark.svg",
+  },
 };
 
 export default function RootLayout({
