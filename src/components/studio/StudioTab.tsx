@@ -7,10 +7,9 @@ import { SidebarDock } from './SidebarDock';
 import { AssistantPanel } from './AssistantPanel';
 import { ImageCropper } from './ImageCropper';
 import { ImageEditOverlay } from './ImageEditOverlay';
-import { SmartSequenceDock } from './SmartSequenceDock';
-import { generateViduMultiFrame } from '@/services/viduService';
+import { generateViduMultiFrame, queryViduTask, ViduMultiFrameConfig } from '@/services/viduService';
 import { SettingsModal } from './SettingsModal';
-import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, SmartSequenceItem, Canvas, VideoGenerationMode } from '@/types';
+import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, Canvas, VideoGenerationMode } from '@/types';
 import { generateImageFromText, generateVideo, analyzeImage, editImageWithText, planStoryboard, orchestrateVideoPrompt, urlToBase64, extractLastFrame, generateAudio } from '@/services/geminiService';
 import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
@@ -18,8 +17,8 @@ import { synthesizeSpeech, MinimaxGenerateParams } from '@/services/minimaxServi
 import { saveToStorage, loadFromStorage } from '@/services/storage';
 import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
-    Brush, MousePointerClick, LayoutTemplate, X, Film, Link, RefreshCw, Upload,
-    Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan, Music, Mic2, FileSearch, Scissors
+    MousePointerClick, LayoutTemplate, X, RefreshCw, Film, Brush, Mic2, Music, FileSearch,
+    Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan
 } from 'lucide-react';
 
 // Apple Physics Curve
@@ -195,9 +194,6 @@ export default function StudioTab() {
         document.documentElement.classList.toggle('dark', theme === 'dark');
         localStorage.setItem('lsai-theme', theme);
     }, [theme]);
-
-    // Multi-Frame Dock State
-    const [isMultiFrameOpen, setIsMultiFrameOpen] = useState(false);
 
     // Settings State
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -551,6 +547,7 @@ export default function StudioTab() {
             case NodeType.VIDEO_FACTORY: return '视频工厂';
             case NodeType.AUDIO_GENERATOR: return '灵感音乐';
             case NodeType.IMAGE_EDITOR: return '图像编辑';
+            case NodeType.MULTI_FRAME_VIDEO: return '智能多帧';
             default: return t;
         }
     };
@@ -564,6 +561,7 @@ export default function StudioTab() {
             case NodeType.VIDEO_FACTORY: return VideoIcon;
             case NodeType.AUDIO_GENERATOR: return Mic2;
             case NodeType.IMAGE_EDITOR: return Brush;
+            case NodeType.MULTI_FRAME_VIDEO: return Scan;
             default: return Plus;
         }
     };
@@ -644,11 +642,13 @@ export default function StudioTab() {
                         'gemini-2.5-flash',
             generationMode: type === NodeType.VIDEO_GENERATOR ? 'DEFAULT' : undefined,
             // 图像/视频节点默认比例为 16:9
-            aspectRatio: (type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR || type === NodeType.VIDEO_FACTORY) ? '16:9' : undefined,
+            aspectRatio: (type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR || type === NodeType.VIDEO_FACTORY || type === NodeType.MULTI_FRAME_VIDEO) ? '16:9' : undefined,
             // 音频节点默认配置
             audioMode: type === NodeType.AUDIO_GENERATOR ? defaultAudioMode : undefined,
             musicConfig: type === NodeType.AUDIO_GENERATOR ? { mv: 'chirp-v4', tags: 'pop, catchy' } : undefined,
             voiceConfig: type === NodeType.AUDIO_GENERATOR ? { voiceId: 'female-shaonv', speed: 1, emotion: 'calm' } : undefined,
+            // 多帧视频节点默认配置
+            multiFrameData: type === NodeType.MULTI_FRAME_VIDEO ? { frames: [], viduModel: 'viduq2-turbo', viduResolution: '720p' } : undefined,
             ...initialData
         };
 
@@ -660,7 +660,8 @@ export default function StudioTab() {
             [NodeType.VIDEO_GENERATOR]: '视频生成',
             [NodeType.VIDEO_FACTORY]: '视频工厂',
             [NodeType.AUDIO_GENERATOR]: '灵感音乐',
-            [NodeType.IMAGE_EDITOR]: '图像编辑'
+            [NodeType.IMAGE_EDITOR]: '图像编辑',
+            [NodeType.MULTI_FRAME_VIDEO]: '智能多帧'
         };
 
         const baseX = x !== undefined ? x : (-pan.x + window.innerWidth / 2) / scale - 210;
@@ -673,7 +674,8 @@ export default function StudioTab() {
         const [rw, rh] = (defaults.aspectRatio || '16:9').split(':').map(Number);
         const nodeHeight = type === NodeType.AUDIO_GENERATOR ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
             type === NodeType.PROMPT_INPUT ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
-                (nodeWidth * rh / rw);
+                type === NodeType.MULTI_FRAME_VIDEO ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
+                    (nodeWidth * rh / rw);
 
         const { x: finalX, y: finalY } = findNonOverlappingPosition(safeBaseX, safeBaseY, nodeWidth, nodeHeight, nodesRef.current, 'down');
 
@@ -819,29 +821,6 @@ export default function StudioTab() {
         // 选中新创建的节点
         setSelectedNodeIds([newNode.id]);
     }, [pan, scale, saveHistory, isPointOnEmptyCanvas]);
-
-    const handleMultiFrameGenerate = async (frames: SmartSequenceItem[], config: any): Promise<string> => {
-        try {
-            // 使用 Vidu 智能多帧 API
-            console.log('[Vidu MultiFrame] Generating with config:', config);
-            const result = await generateViduMultiFrame(frames, config);
-
-            if (!result.success) {
-                throw new Error(result.error || 'Vidu 生成失败');
-            }
-
-            if (!result.videoUrl) {
-                throw new Error('Vidu 未返回视频URL');
-            }
-
-            handleAssetGenerated('video', result.videoUrl, 'Vidu 智能多帧');
-            return result.videoUrl;
-        } catch (e: any) {
-            console.error('[Vidu MultiFrame] Generation failed:', e);
-            throw new Error(e.message || "智能多帧生成失败");
-        }
-    };
-
 
     // 使用 ref 存储最新的 scale 和 pan 值，避免闭包问题
     const scaleRef = useRef(scale);
@@ -1122,11 +1101,12 @@ export default function StudioTab() {
         // 如果是，弹出上游节点选择框（素材/描述）
         if (connStart && connStart.portType === 'input') {
             const targetNode = nodesRef.current.find(n => n.id === connStart.id);
-            // 对生成节点（图像/视频）和提示词节点生效
+            // 对生成节点（图像/视频/多帧视频）和提示词节点生效
             if (targetNode && (
                 targetNode.type === NodeType.IMAGE_GENERATOR ||
                 targetNode.type === NodeType.VIDEO_GENERATOR ||
                 targetNode.type === NodeType.VIDEO_FACTORY ||
+                targetNode.type === NodeType.MULTI_FRAME_VIDEO ||
                 targetNode.type === NodeType.PROMPT_INPUT
             )) {
                 const canvasX = (e.clientX - pan.x) / scale;
@@ -1714,6 +1694,82 @@ export default function StudioTab() {
                 const img = node.data.image || inputImages[0];
                 const res = await editImageWithText(img, prompt, node.data.model || 'gemini-2.5-flash-image');
                 handleNodeUpdate(id, { image: res });
+
+            } else if (node.type === NodeType.MULTI_FRAME_VIDEO) {
+                // 智能多帧视频生成
+                const frames = node.data.multiFrameData?.frames || [];
+                if (frames.length < 2) {
+                    throw new Error('智能多帧至少需要2张关键帧');
+                }
+
+                const viduConfig: ViduMultiFrameConfig = {
+                    model: node.data.multiFrameData?.viduModel || 'viduq2-turbo',
+                    resolution: node.data.multiFrameData?.viduResolution || '720p',
+                };
+
+                // 调用 Vidu API 生成视频
+                const result = await generateViduMultiFrame(frames, viduConfig);
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Vidu 生成失败');
+                }
+
+                // 如果返回 taskId，需要轮询查询结果
+                if (result.taskId && !result.videoUrl) {
+                    // 保存 taskId 到节点数据
+                    handleNodeUpdate(id, {
+                        multiFrameData: {
+                            ...node.data.multiFrameData,
+                            taskId: result.taskId,
+                        },
+                        progress: '正在生成视频...',
+                    });
+
+                    // 轮询查询任务状态
+                    const maxAttempts = 120; // 最多查询 120 次（约 10 分钟）
+                    let attempts = 0;
+                    let finalResult = result;
+
+                    while (attempts < maxAttempts) {
+                        await new Promise(resolve => setTimeout(resolve, 5000)); // 每 5 秒查询一次
+                        attempts++;
+
+                        const queryResult = await queryViduTask(result.taskId);
+
+                        if (!queryResult.success) {
+                            throw new Error(queryResult.error || '查询任务状态失败');
+                        }
+
+                        if (queryResult.videoUrl) {
+                            finalResult = queryResult;
+                            break;
+                        }
+
+                        if (queryResult.state === 'failed') {
+                            throw new Error('视频生成失败');
+                        }
+
+                        // 更新进度
+                        handleNodeUpdate(id, {
+                            progress: `生成中... (${attempts * 5}s)`,
+                        });
+                    }
+
+                    if (!finalResult.videoUrl) {
+                        throw new Error('生成超时，请稍后重试');
+                    }
+
+                    // 生成完成，更新节点
+                    handleNodeUpdate(id, {
+                        videoUri: finalResult.videoUrl,
+                        progress: undefined,
+                    });
+                } else if (result.videoUrl) {
+                    // 直接返回视频 URL
+                    handleNodeUpdate(id, {
+                        videoUri: result.videoUrl,
+                    });
+                }
             }
             setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n));
         } catch (e: any) {
@@ -2342,12 +2398,59 @@ export default function StudioTab() {
                                             if (exists) return p;
                                             return [...p, { from: fromId, to: toId }];
                                         });
-                                        setNodes(p => p.map(n => {
-                                            if (n.id !== toId) return n;
-                                            // Prevent duplicate inputs
-                                            if (n.inputs.includes(fromId)) return n;
-                                            return { ...n, inputs: [...n.inputs, fromId] };
-                                        }));
+                                        setNodes(p => {
+                                            // 获取源节点信息
+                                            const sourceNode = p.find(x => x.id === fromId);
+                                            const sourceImage = sourceNode?.data.image;
+                                            const sourcePrompt = sourceNode?.data.prompt;
+                                            const isSourcePromptNode = sourceNode?.type === NodeType.PROMPT_INPUT;
+
+                                            return p.map(n => {
+                                                if (n.id !== toId) return n;
+                                                // Prevent duplicate inputs
+                                                if (n.inputs.includes(fromId)) return n;
+
+                                                // 如果目标是 MULTI_FRAME_VIDEO 且源节点有图片，添加为帧
+                                                if (n.type === NodeType.MULTI_FRAME_VIDEO && sourceImage) {
+                                                    const currentFrames = n.data.multiFrameData?.frames || [];
+                                                    // 检查是否已存在该图片
+                                                    const alreadyExists = currentFrames.some(f => f.src === sourceImage);
+                                                    if (!alreadyExists && currentFrames.length < 10) {
+                                                        const newFrame = {
+                                                            id: `mf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                                            src: sourceImage,
+                                                            transition: { duration: 4, prompt: '' }
+                                                        };
+                                                        return {
+                                                            ...n,
+                                                            inputs: [...n.inputs, fromId],
+                                                            data: {
+                                                                ...n.data,
+                                                                multiFrameData: {
+                                                                    ...n.data.multiFrameData,
+                                                                    frames: [...currentFrames, newFrame],
+                                                                }
+                                                            }
+                                                        };
+                                                    }
+                                                }
+
+                                                // 如果源节点是提示词节点，且目标是图片/视频生成节点，自动复制提示词
+                                                if (isSourcePromptNode && sourcePrompt && (
+                                                    n.type === NodeType.IMAGE_GENERATOR ||
+                                                    n.type === NodeType.VIDEO_GENERATOR ||
+                                                    n.type === NodeType.VIDEO_FACTORY
+                                                )) {
+                                                    return {
+                                                        ...n,
+                                                        inputs: [...n.inputs, fromId],
+                                                        data: { ...n.data, prompt: sourcePrompt }
+                                                    };
+                                                }
+
+                                                return { ...n, inputs: [...n.inputs, fromId] };
+                                            });
+                                        });
                                     }
                                 }
                                 // 立即更新 ref，防止 handleGlobalMouseUp 误触发节点选择框
@@ -2439,7 +2542,7 @@ export default function StudioTab() {
                         {contextMenuTarget?.type === 'create' && (
                             <>
                                 <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">创建新节点</div>
-                                {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.AUDIO_GENERATOR].map(t => { const ItemIcon = getNodeIcon(t); return (<button key={t} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors" onClick={() => { addNode(t, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale); setContextMenu(null); }}> <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" /> {getNodeNameCN(t)} </button>); })}
+                                {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.MULTI_FRAME_VIDEO, NodeType.AUDIO_GENERATOR].map(t => { const ItemIcon = getNodeIcon(t); return (<button key={t} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors" onClick={() => { addNode(t, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale); setContextMenu(null); }}> <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" /> {getNodeNameCN(t)} </button>); })}
                             </>
                         )}
                         {contextMenuTarget?.type === 'group' && (
@@ -2474,6 +2577,7 @@ export default function StudioTab() {
                                     { type: NodeType.PROMPT_INPUT, label: '分析图片', icon: FileSearch, color: 'text-emerald-500' },
                                     { type: NodeType.IMAGE_GENERATOR, label: '编辑图片', icon: ImageIcon, color: 'text-blue-500' },
                                     { type: NodeType.VIDEO_GENERATOR, label: '生成视频', icon: Film, color: 'text-purple-500' },
+                                    { type: NodeType.MULTI_FRAME_VIDEO, label: '智能多帧', icon: Scan, color: 'text-teal-500' },
                                 ];
                             } else if (hasVideo) {
                                 availableTypes = [
@@ -2513,6 +2617,7 @@ export default function StudioTab() {
                                         [NodeType.VIDEO_GENERATOR]: '视频生成',
                                         [NodeType.VIDEO_FACTORY]: '视频工厂',
                                         [NodeType.AUDIO_GENERATOR]: '音频生成',
+                                        [NodeType.MULTI_FRAME_VIDEO]: '智能多帧',
                                     };
                                     return typeMap[nodeType] || '新节点';
                                 };
@@ -2529,6 +2634,24 @@ export default function StudioTab() {
                                 // 如果源节点是提示词节点，将提示词注入到下游节点
                                 const promptToInject = isPromptNode ? sourceNode.data.prompt : undefined;
 
+                                // 如果创建智能多帧节点且源节点有图片，将图片作为第一帧
+                                const getMultiFrameData = () => {
+                                    if (nodeType === NodeType.MULTI_FRAME_VIDEO && hasImage && sourceNode.data.image) {
+                                        return {
+                                            frames: [{
+                                                id: `mf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                                src: sourceNode.data.image,
+                                                transition: { duration: 4, prompt: '' }
+                                            }],
+                                            viduModel: 'viduq2-turbo' as const,
+                                            viduResolution: '720p' as const,
+                                        };
+                                    }
+                                    return nodeType === NodeType.MULTI_FRAME_VIDEO
+                                        ? { frames: [], viduModel: 'viduq2-turbo' as const, viduResolution: '720p' as const }
+                                        : undefined;
+                                };
+
                                 const newNode: AppNode = {
                                     id: newNodeId,
                                     type: nodeType,
@@ -2543,6 +2666,7 @@ export default function StudioTab() {
                                         aspectRatio: '16:9',
                                         ...(generationMode && { generationMode }),
                                         ...(promptToInject && { prompt: promptToInject }), // 注入提示词
+                                        ...(getMultiFrameData() && { multiFrameData: getMultiFrameData() }),
                                     },
                                     inputs: [sourceNode.id]
                                 };
@@ -2713,18 +2837,6 @@ export default function StudioTab() {
                         }}
                     />
                 )}
-                <SmartSequenceDock
-                    isOpen={isMultiFrameOpen}
-                    onClose={() => setIsMultiFrameOpen(false)}
-                    onGenerate={handleMultiFrameGenerate}
-                    onConnectStart={(e, type) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const portElement = e.currentTarget as HTMLElement;
-                        const rect = portElement.getBoundingClientRect();
-                        setConnectionStart({ id: 'smart-sequence-dock', portType: 'output', screenX: rect.left + rect.width / 2, screenY: rect.top + rect.height / 2 });
-                    }}
-                />
                 <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
                 <SidebarDock
@@ -2732,8 +2844,6 @@ export default function StudioTab() {
                     onUndo={undo}
                     isChatOpen={isChatOpen}
                     onToggleChat={() => setIsChatOpen(!isChatOpen)}
-                    isMultiFrameOpen={isMultiFrameOpen}
-                    onToggleMultiFrame={() => setIsMultiFrameOpen(!isMultiFrameOpen)}
                     assetHistory={assetHistory}
                     onHistoryItemClick={(item) => { const type = item.type.includes('image') ? NodeType.IMAGE_GENERATOR : NodeType.VIDEO_GENERATOR; const data = item.type === 'image' ? { image: item.src } : { videoUri: item.src }; addNode(type, undefined, undefined, data); }}
                     onDeleteAsset={(id) => setAssetHistory(prev => prev.filter(a => a.id !== id))}

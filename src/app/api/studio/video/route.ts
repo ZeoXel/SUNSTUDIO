@@ -56,7 +56,7 @@ async function querySeedanceTask(baseUrl: string, apiKey: string, taskId: string
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { prompt, model, aspectRatio, enhancePrompt, enableUpsample, images } = body;
+        const { prompt, model, aspectRatio, duration, enhancePrompt, enableUpsample, images } = body;
 
         if (!prompt) {
             return NextResponse.json({ error: 'prompt is required' }, { status: 400 });

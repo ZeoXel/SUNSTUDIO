@@ -525,7 +525,7 @@ export const generateImageFromText = async (
 export const generateVideo = async (
     prompt: string,
     model: string,
-    options: { aspectRatio?: string, count?: number, generationMode?: VideoGenerationMode, resolution?: string } = {},
+    options: { aspectRatio?: string, count?: number, generationMode?: VideoGenerationMode, resolution?: string, duration?: string } = {},
     inputImageBase64?: string | null,
     videoInput?: any,
     referenceImages?: string[]
