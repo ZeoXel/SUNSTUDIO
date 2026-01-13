@@ -105,6 +105,12 @@ export interface AppNode {
       viduResolution?: '540p' | '720p' | '1080p'; // Vidu 分辨率
       taskId?: string;              // Vidu 任务 ID (用于轮询)
     };
+
+    // First-Last Frame (首尾帧视频生成)
+    firstLastFrameData?: {
+      firstFrame?: string;  // Base64 首帧图片
+      lastFrame?: string;   // Base64 尾帧图片
+    };
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }
@@ -116,6 +122,8 @@ export interface Group {
   width: number;
   height: number;
   title: string;
+  hasOutputPort?: boolean; // 是否显示右侧连接点（批量素材分组用）
+  nodeIds?: string[]; // 分组包含的节点ID列表
 }
 
 export interface Connection {

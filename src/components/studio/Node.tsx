@@ -1,7 +1,7 @@
 "use client";
 
 import { AppNode, NodeStatus, NodeType, AudioGenerationMode } from '@/types';
-import { Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, Wand2, Scaling, FileSearch, Edit, Loader2, X, Upload, Film, ChevronDown, Copy, Monitor, Music, Pause, Mic2, Grid3X3, Check } from 'lucide-react';
+import { Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, Wand2, Scaling, FileSearch, Edit, Loader2, X, Upload, Film, ChevronDown, Copy, Monitor, Music, Pause, Mic2, Grid3X3, Check, Clock, ArrowRight } from 'lucide-react';
 import { AudioNodePanel } from './AudioNodePanel';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
 
@@ -25,6 +25,9 @@ import {
     DEFAULT_NODE_WIDTH,
     DEFAULT_FIXED_HEIGHT,
     AUDIO_NODE_HEIGHT,
+    getDurationOptions,
+    getDefaultDuration,
+    supportsFirstLastFrame,
 } from './shared';
 import type { InputAsset } from './shared';
 
@@ -49,6 +52,7 @@ interface NodeProps {
     onResizeMouseDown: (e: React.MouseEvent, id: string, initialWidth: number, initialHeight: number) => void;
     onDragResultToCanvas?: (sourceNodeId: string, type: 'image' | 'video', src: string, canvasX: number, canvasY: number) => void; // 从组图宫格拖拽结果到画布
     onGridDragStateChange?: (state: { isDragging: boolean; type?: 'image' | 'video'; src?: string; screenX?: number; screenY?: number } | null) => void; // 通知父组件拖拽状态变化
+    onBatchUpload?: (files: File[], type: 'image' | 'video', sourceNodeId: string) => void; // 批量上传素材回调
     inputAssets?: InputAsset[];
     onInputReorder?: (nodeId: string, newOrder: string[]) => void;
     nodeRef?: (el: HTMLDivElement | null) => void; // 用于父组件直接操作 DOM
@@ -82,7 +86,7 @@ const arePropsEqual = (prev: NodeProps, next: NodeProps) => {
 };
 
 const NodeComponent: React.FC<NodeProps> = ({
-    node, onUpdate, onAction, onDelete, onExpand, onEdit, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
+    node, onUpdate, onAction, onDelete, onExpand, onEdit, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, onBatchUpload, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
 }) => {
     const inverseScale = 1 / Math.max(0.1, zoom);
     // 检测深色模式
@@ -559,32 +563,44 @@ const NodeComponent: React.FC<NodeProps> = ({
         if (node.type === NodeType.IMAGE_ASSET) {
             const hasImage = !!node.data.image;
             const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-                const file = e.target.files?.[0];
-                if (!file || !file.type.startsWith('image/')) return;
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
+
+                // 过滤出有效的图片文件
+                const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+                if (imageFiles.length === 0) return;
+
+                // 批量上传：创建多个节点并分组
+                if (imageFiles.length > 1 && onBatchUpload) {
+                    onBatchUpload(imageFiles, 'image', node.id);
+                    // 清空 input 以便再次选择
+                    e.target.value = '';
+                    return;
+                }
+
+                // 单个文件：原有逻辑
+                const file = imageFiles[0];
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     const base64 = ev.target?.result as string;
-                    // 读取图片尺寸并自适应节点大小
                     const img = new window.Image();
                     img.onload = () => {
                         const imgWidth = img.width;
                         const imgHeight = img.height;
-                        // 计算最接近的标准比例
                         const ratio = imgWidth / imgHeight;
                         let aspectRatio = '1:1';
                         if (ratio > 1.6) aspectRatio = '16:9';
                         else if (ratio > 1.2) aspectRatio = '4:3';
                         else if (ratio < 0.625) aspectRatio = '9:16';
                         else if (ratio < 0.83) aspectRatio = '3:4';
-                        // 计算节点尺寸，使用默认宽度 420 保持一致
                         const newWidth = DEFAULT_NODE_WIDTH;
                         const newHeight = DEFAULT_NODE_WIDTH * imgHeight / imgWidth;
-                        // 更新节点数据和尺寸
                         onUpdate(node.id, { image: base64, aspectRatio }, { width: newWidth, height: newHeight });
                     };
                     img.src = base64;
                 };
                 reader.readAsDataURL(file);
+                e.target.value = '';
             };
             return (
                 <div className="w-full h-full relative group/asset overflow-hidden bg-white dark:bg-slate-800" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
@@ -597,8 +613,9 @@ const NodeComponent: React.FC<NodeProps> = ({
                             >
                                 <Upload size={28} className="text-blue-400/60 dark:text-blue-500/50" />
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">上传图片</span>
+                                <span className="text-[8px] text-blue-400/60 dark:text-blue-500/40 mt-1">支持批量上传</span>
                             </div>
-                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleImageUpload} />
                         </div>
                     ) : (
                         <>
@@ -627,10 +644,25 @@ const NodeComponent: React.FC<NodeProps> = ({
         if (node.type === NodeType.VIDEO_ASSET) {
             const hasVideo = !!node.data.videoUri;
             const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-                const file = e.target.files?.[0];
-                if (!file || !file.type.startsWith('video/')) return;
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
+
+                // 过滤出有效的视频文件
+                const videoFiles = Array.from(files).filter(f => f.type.startsWith('video/'));
+                if (videoFiles.length === 0) return;
+
+                // 批量上传：创建多个节点并分组
+                if (videoFiles.length > 1 && onBatchUpload) {
+                    onBatchUpload(videoFiles, 'video', node.id);
+                    e.target.value = '';
+                    return;
+                }
+
+                // 单个文件：原有逻辑
+                const file = videoFiles[0];
                 const url = URL.createObjectURL(file);
                 onUpdate(node.id, { videoUri: url });
+                e.target.value = '';
             };
             return (
                 <div className="w-full h-full relative group/asset overflow-hidden bg-white dark:bg-slate-800" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
@@ -643,8 +675,9 @@ const NodeComponent: React.FC<NodeProps> = ({
                             >
                                 <Upload size={28} className="text-emerald-400/60 dark:text-emerald-500/50" />
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400">上传视频</span>
+                                <span className="text-[8px] text-emerald-400/60 dark:text-emerald-500/40 mt-1">支持批量上传</span>
                             </div>
-                            <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={handleVideoUpload} />
+                            <input type="file" ref={fileInputRef} className="hidden" accept="video/*" multiple onChange={handleVideoUpload} />
                         </div>
                     ) : (
                         <>
@@ -744,7 +777,11 @@ const NodeComponent: React.FC<NodeProps> = ({
 
         // 剧情延展模式特殊处理：始终显示空状态样式，即使有 croppedFrame（CUT已合并到CONTINUE，保留向后兼容）
         const isCutOrContinueMode = node.type === NodeType.VIDEO_FACTORY && (generationMode === 'CUT' || generationMode === 'CONTINUE');
-        const showEmptyState = isCutOrContinueMode ? !hasContent : !hasContent;
+        // 首尾帧模式检测：显式设置模式 OR 已上传首尾帧数据
+        const hasFirstLastFrameData = !!(node.data.firstLastFrameData?.firstFrame || node.data.firstLastFrameData?.lastFrame);
+        const isFirstLastFrameMode = (node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) &&
+            (generationMode === 'FIRST_LAST_FRAME' || hasFirstLastFrameData);
+        const showEmptyState = (isCutOrContinueMode || isFirstLastFrameMode) ? !hasContent : !hasContent;
 
         const isVideoNode = node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY;
         const themeColor = isVideoNode ? 'emerald' : 'blue';
@@ -755,8 +792,118 @@ const NodeComponent: React.FC<NodeProps> = ({
         return (
             <div className="w-full h-full relative group/media overflow-hidden bg-white dark:bg-slate-800" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
                 {showEmptyState ? (
-                    <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600 dark:text-slate-400 transition-colors ${!isCutOrContinueMode ? bgClass : ''}`}>
-                        {isCutOrContinueMode ? (
+                    <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600 dark:text-slate-400 transition-colors ${!(isCutOrContinueMode || isFirstLastFrameMode) ? bgClass : ''}`}>
+                        {isFirstLastFrameMode ? (
+                            // 首尾帧模式：显示首帧和尾帧上传区域
+                            (() => {
+                                const firstFrame = node.data.firstLastFrameData?.firstFrame;
+                                const lastFrame = node.data.firstLastFrameData?.lastFrame;
+                                const hasFrames = !!firstFrame && !!lastFrame;
+
+                                const handleFrameUpload = (frameType: 'first' | 'last') => (e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file || !file.type.startsWith('image/')) return;
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                        const base64 = ev.target?.result as string;
+                                        const currentData = node.data.firstLastFrameData || {};
+                                        onUpdate(node.id, {
+                                            firstLastFrameData: {
+                                                ...currentData,
+                                                [frameType === 'first' ? 'firstFrame' : 'lastFrame']: base64
+                                            }
+                                        });
+                                    };
+                                    reader.readAsDataURL(file);
+                                    e.target.value = ''; // 清空以便重复上传相同文件
+                                };
+
+                                return (
+                                    <div className="w-full h-full flex flex-col items-center justify-center p-4 select-none">
+                                        {isWorking ? (
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Loader2 className="animate-spin text-emerald-500" size={28} />
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 dark:text-emerald-400">
+                                                    生成中...
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {/* 首尾帧上传区域 */}
+                                                <div className="flex items-center justify-center gap-3 w-full max-w-[320px]">
+                                                    {/* 首帧上传框 */}
+                                                    <div className="relative flex-1 aspect-video rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-400 dark:hover:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20 overflow-hidden transition-all group/first">
+                                                        {firstFrame ? (
+                                                            <>
+                                                                <img src={firstFrame} className="w-full h-full object-cover" alt="首帧" />
+                                                                <button
+                                                                    className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 rounded-full text-white opacity-0 group-hover/first:opacity-100 transition-all"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const currentData = node.data.firstLastFrameData || {};
+                                                                        onUpdate(node.id, {
+                                                                            firstLastFrameData: { ...currentData, firstFrame: undefined }
+                                                                        });
+                                                                    }}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <X size={10} />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
+                                                                <Plus size={16} className="text-emerald-400 dark:text-emerald-500" />
+                                                                <span className="text-[8px] font-bold text-emerald-500 dark:text-emerald-400 mt-1">首帧</span>
+                                                                <input type="file" className="hidden" accept="image/*" onChange={handleFrameUpload('first')} />
+                                                            </label>
+                                                        )}
+                                                    </div>
+
+                                                    {/* 箭头指示 */}
+                                                    <div className="flex flex-col items-center gap-0.5 text-emerald-400/60 dark:text-emerald-500/50">
+                                                        <ArrowRight size={16} />
+                                                        <span className="text-[7px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">过渡</span>
+                                                    </div>
+
+                                                    {/* 尾帧上传框 */}
+                                                    <div className="relative flex-1 aspect-video rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-400 dark:hover:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20 overflow-hidden transition-all group/last">
+                                                        {lastFrame ? (
+                                                            <>
+                                                                <img src={lastFrame} className="w-full h-full object-cover" alt="尾帧" />
+                                                                <button
+                                                                    className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 rounded-full text-white opacity-0 group-hover/last:opacity-100 transition-all"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const currentData = node.data.firstLastFrameData || {};
+                                                                        onUpdate(node.id, {
+                                                                            firstLastFrameData: { ...currentData, lastFrame: undefined }
+                                                                        });
+                                                                    }}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <X size={10} />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
+                                                                <Plus size={16} className="text-emerald-400 dark:text-emerald-500" />
+                                                                <span className="text-[8px] font-bold text-emerald-500 dark:text-emerald-400 mt-1">尾帧</span>
+                                                                <input type="file" className="hidden" accept="image/*" onChange={handleFrameUpload('last')} />
+                                                            </label>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* 状态提示 */}
+                                                <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-500/70 dark:text-emerald-400/70 mt-3">
+                                                    {hasFrames ? '准备生成' : '上传首尾帧'}
+                                                </span>
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })()
+                        ) : isCutOrContinueMode ? (
                             // 剧情延展模式：根据是否已选择关键帧显示不同状态
                             (() => {
                                 const upstreamVideo = inputAssets?.find(a => a.type === 'video');
@@ -1475,6 +1622,27 @@ const NodeComponent: React.FC<NodeProps> = ({
                                     </div>
                                 );
                             })()}
+                            {/* 时长选择 - 仅视频节点显示 */}
+                            {(node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) && (
+                                <div className="relative group/duration">
+                                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-400 dark:hover:text-blue-300">
+                                        <Clock size={12} /><span>{node.data.duration === -1 ? '自动' : `${node.data.duration || getDefaultDuration(node.data.model)}s`}</span>
+                                    </div>
+                                    <div className="absolute bottom-full left-0 pb-2 w-20 opacity-0 translate-y-2 pointer-events-none group-hover/duration:opacity-100 group-hover/duration:translate-y-0 group-hover/duration:pointer-events-auto transition-all duration-200 z-[200]">
+                                        <div className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+                                            {getDurationOptions(node.data.model).map(d => (
+                                                <div
+                                                    key={d}
+                                                    onClick={() => onUpdate(node.id, { duration: d })}
+                                                    className={`px-3 py-2 text-[10px] font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 ${(node.data.duration || getDefaultDuration(node.data.model)) === d ? 'text-blue-400 dark:text-blue-300 bg-slate-50 dark:bg-slate-700' : 'text-slate-600 dark:text-slate-300'}`}
+                                                >
+                                                    {d === -1 ? '自动' : `${d}s`}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             {/* 组图数量选择 - 仅图像生成节点显示 */}
                             {node.type === NodeType.IMAGE_GENERATOR && (
                                 <div className="relative group/count">
