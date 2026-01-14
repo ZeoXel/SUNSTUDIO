@@ -29,6 +29,56 @@ const SPRING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const SNAP_THRESHOLD = 8; // Pixels for magnetic snap
 const COLLISION_PADDING = 24; // Spacing when nodes bounce off each other
 
+// ============================================================================
+// Node Config Persistence - 记住用户上次使用的节点配置
+// ============================================================================
+const NODE_CONFIG_STORAGE_KEY = 'zeocanvas_node_configs';
+
+// 需要记忆的配置字段（按节点类型）
+const REMEMBERED_FIELDS: Record<string, string[]> = {
+    [NodeType.IMAGE_GENERATOR]: ['model', 'aspectRatio', 'resolution', 'imageCount'],
+    [NodeType.VIDEO_GENERATOR]: ['model', 'aspectRatio', 'resolution', 'duration', 'videoConfig', 'generationMode'],
+    [NodeType.VIDEO_FACTORY]: ['model', 'aspectRatio', 'resolution', 'duration', 'videoConfig', 'generationMode'],
+    [NodeType.MULTI_FRAME_VIDEO]: ['aspectRatio', 'multiFrameData'],
+    [NodeType.AUDIO_GENERATOR]: ['model', 'audioMode', 'musicConfig', 'voiceConfig'],
+    [NodeType.PROMPT_INPUT]: ['model'],
+};
+
+// 保存节点配置到 localStorage
+const saveNodeConfig = (nodeType: string, config: Record<string, any>) => {
+    try {
+        const fields = REMEMBERED_FIELDS[nodeType];
+        if (!fields) return;
+
+        const stored = JSON.parse(localStorage.getItem(NODE_CONFIG_STORAGE_KEY) || '{}');
+        const filteredConfig: Record<string, any> = {};
+
+        fields.forEach(field => {
+            if (config[field] !== undefined) {
+                filteredConfig[field] = config[field];
+            }
+        });
+
+        if (Object.keys(filteredConfig).length > 0) {
+            stored[nodeType] = { ...stored[nodeType], ...filteredConfig };
+            localStorage.setItem(NODE_CONFIG_STORAGE_KEY, JSON.stringify(stored));
+        }
+    } catch (e) {
+        console.warn('Failed to save node config:', e);
+    }
+};
+
+// 从 localStorage 读取节点配置
+const loadNodeConfig = (nodeType: string): Record<string, any> => {
+    try {
+        const stored = JSON.parse(localStorage.getItem(NODE_CONFIG_STORAGE_KEY) || '{}');
+        return stored[nodeType] || {};
+    } catch (e) {
+        console.warn('Failed to load node config:', e);
+        return {};
+    }
+};
+
 // 连接点配置 - 与 Node.tsx 中的连接点位置保持一致
 const PORT_OFFSET = 12; // 连接点中心到节点边缘的基础距离
 
@@ -731,30 +781,45 @@ export default function StudioTab() {
 
         try { saveHistory(); } catch (e) { }
 
+        // 读取用户上次使用的配置
+        const savedConfig = loadNodeConfig(type);
+
         // 确定音频节点的默认模式和模型
-        const defaultAudioMode = initialData?.audioMode || 'music';
+        const defaultAudioMode = initialData?.audioMode || savedConfig.audioMode || 'music';
         const defaultAudioModel = defaultAudioMode === 'music' ? 'suno-v4' : 'speech-2.6-hd';
 
-        // 如果指定了 modelId，优先使用；否则使用默认值
+        // 如果指定了 modelId，优先使用；其次使用保存的配置；最后使用默认值
         const resolveModel = () => {
             if (modelId) return modelId;
+            if (savedConfig.model) return savedConfig.model;
             if (type === NodeType.VIDEO_GENERATOR) return 'veo3.1';
             if (type === NodeType.AUDIO_GENERATOR) return defaultAudioModel;
             if (type.includes('IMAGE')) return 'doubao-seedream-4-5-251128';
             return 'gemini-2.5-flash';
         };
 
+        // 默认比例：优先使用保存的配置
+        const defaultAspectRatio = savedConfig.aspectRatio ||
+            ((type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR || type === NodeType.VIDEO_FACTORY || type === NodeType.MULTI_FRAME_VIDEO) ? '16:9' : undefined);
+
         const defaults: any = {
             model: resolveModel(),
-            generationMode: type === NodeType.VIDEO_GENERATOR ? 'DEFAULT' : undefined,
-            // 图像/视频节点默认比例为 16:9
-            aspectRatio: (type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR || type === NodeType.VIDEO_FACTORY || type === NodeType.MULTI_FRAME_VIDEO) ? '16:9' : undefined,
-            // 音频节点默认配置
+            generationMode: savedConfig.generationMode || (type === NodeType.VIDEO_GENERATOR ? 'DEFAULT' : undefined),
+            aspectRatio: defaultAspectRatio,
+            resolution: savedConfig.resolution,
+            duration: savedConfig.duration,
+            videoConfig: savedConfig.videoConfig,
+            imageCount: savedConfig.imageCount,
+            // 音频节点默认配置（合并保存的配置）
             audioMode: type === NodeType.AUDIO_GENERATOR ? defaultAudioMode : undefined,
-            musicConfig: type === NodeType.AUDIO_GENERATOR ? { mv: 'chirp-v4', tags: 'pop, catchy' } : undefined,
-            voiceConfig: type === NodeType.AUDIO_GENERATOR ? { voiceId: 'female-shaonv', speed: 1, emotion: 'calm' } : undefined,
-            // 多帧视频节点默认配置
-            multiFrameData: type === NodeType.MULTI_FRAME_VIDEO ? { frames: [], viduModel: 'viduq2-turbo', viduResolution: '720p' } : undefined,
+            musicConfig: type === NodeType.AUDIO_GENERATOR ? { mv: 'chirp-v4', tags: 'pop, catchy', ...savedConfig.musicConfig } : undefined,
+            voiceConfig: type === NodeType.AUDIO_GENERATOR ? { voiceId: 'female-shaonv', speed: 1, emotion: 'calm', ...savedConfig.voiceConfig } : undefined,
+            // 多帧视频节点默认配置（合并保存的配置）
+            multiFrameData: type === NodeType.MULTI_FRAME_VIDEO ? {
+                frames: [],
+                viduModel: savedConfig.multiFrameData?.viduModel || 'viduq2-turbo',
+                viduResolution: savedConfig.multiFrameData?.viduResolution || '720p'
+            } : undefined,
             ...initialData
         };
 
@@ -1562,6 +1627,15 @@ export default function StudioTab() {
                     if (data.videoUri) handleAssetGenerated('video', data.videoUri, updated.title);
                     if (data.audioUri) handleAssetGenerated('audio', data.audioUri, updated.title);
 
+                    // 保存用户配置（仅保存配置相关字段，不保存结果数据）
+                    const configFields = REMEMBERED_FIELDS[n.type];
+                    if (configFields) {
+                        const hasConfigUpdate = configFields.some(field => data[field] !== undefined);
+                        if (hasConfigUpdate) {
+                            saveNodeConfig(n.type, mergedData);
+                        }
+                    }
+
                     return updated;
                 }
                 return n;
@@ -1883,7 +1957,8 @@ export default function StudioTab() {
                             count: node.data.videoCount || 1,
                             generationMode: strategy.generationMode,
                             resolution: node.data.resolution,
-                            duration: node.data.duration  // 视频时长
+                            duration: node.data.duration,  // 视频时长
+                            videoConfig: node.data.videoConfig,  // 厂商扩展配置
                         },
                         strategy.inputImageForGeneration,
                         strategy.videoInput,
@@ -1997,7 +2072,8 @@ export default function StudioTab() {
                             count: node.data.videoCount || 1,
                             generationMode: strategy.generationMode,
                             resolution: node.data.resolution,
-                            duration: node.data.duration  // 视频时长
+                            duration: node.data.duration,  // 视频时长
+                            videoConfig: node.data.videoConfig,  // 厂商扩展配置
                         },
                         strategy.inputImageForGeneration,
                         videoInput || strategy.videoInput,

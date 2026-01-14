@@ -14,16 +14,25 @@ export interface ModelVariant {
 export interface ModelCapabilities {
   aspectRatios?: string[];
   durations?: number[];
+  resolutions?: string[];
   multiImage?: boolean;
   firstLastFrame?: boolean;
   multiOutput?: boolean;
   maxOutputCount?: number;
+  // Vidu 特有功能
+  modes?: string[];          // 支持的生成模式
+  audio?: boolean;           // 音视频直出
+  bgm?: boolean;             // 背景音乐
+  multiSubject?: boolean;    // 多主体参考
+  maxSubjects?: number;      // 最大主体数
+  maxKeyframes?: number;     // 最大关键帧数
 }
 
 /** 模型默认值 */
 export interface ModelDefaults {
   aspectRatio?: string;
   duration?: number;
+  resolution?: string;
 }
 
 /** 厂商定义 - 包含该厂商的所有模型变体 */

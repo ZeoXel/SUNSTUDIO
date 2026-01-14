@@ -23,6 +23,13 @@ export interface SeedanceGenerateOptions {
   duration?: number;      // 4-12 秒, -1 表示自动
   images?: string[];      // 参考图
   imageRoles?: ('first_frame' | 'last_frame')[];  // 首尾帧角色
+  // 扩展配置
+  return_last_frame?: boolean;  // 返回尾帧
+  generate_audio?: boolean;     // 有声视频 (1.5 pro)
+  camera_fixed?: boolean;       // 固定摄像头
+  watermark?: boolean;          // 水印
+  service_tier?: 'default' | 'flex';  // 服务等级
+  seed?: number;                // 随机种子
 }
 
 export interface SeedanceTaskResult {
@@ -31,6 +38,7 @@ export interface SeedanceTaskResult {
   error?: { message: string };
   content?: {
     video_url?: string;
+    last_frame?: string;  // 尾帧图片 (return_last_frame=true 时返回)
   };
 }
 
@@ -70,10 +78,30 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
     });
   }
 
-  const body = {
+  const body: any = {
     model: options.model || 'doubao-seedance-1-5-pro-251215',
     content,
   };
+
+  // 添加扩展配置参数
+  if (options.return_last_frame !== undefined) {
+    body.return_last_frame = options.return_last_frame;
+  }
+  if (options.generate_audio !== undefined) {
+    body.generate_audio = options.generate_audio;
+  }
+  if (options.camera_fixed !== undefined) {
+    body.camera_fixed = options.camera_fixed;
+  }
+  if (options.watermark !== undefined) {
+    body.watermark = options.watermark;
+  }
+  if (options.service_tier) {
+    body.service_tier = options.service_tier;
+  }
+  if (options.seed !== undefined) {
+    body.seed = options.seed;
+  }
 
   const response = await fetch(`${baseUrl}/contents/generations/tasks`, {
     method: 'POST',

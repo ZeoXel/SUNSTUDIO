@@ -44,4 +44,35 @@ export const VIDEO_PROVIDERS: ProviderDefinition[] = [
       duration: 5,
     },
   },
+  {
+    id: 'vidu',
+    name: 'Vidu',
+    category: 'video',
+    logo: '/logos/vidu.svg',
+    models: [
+      { id: 'viduq2-pro', name: 'Q2 Pro', isDefault: true },
+      { id: 'viduq2-turbo', name: 'Q2 Turbo' },
+      { id: 'viduq2-pro-fast', name: 'Q2 Pro Fast' },
+      { id: 'viduq2', name: 'Q2' },
+    ],
+    capabilities: {
+      aspectRatios: ['16:9', '9:16', '4:3', '3:4', '1:1'],
+      durations: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      resolutions: ['540p', '720p', '1080p'],
+      // Vidu 特有功能
+      modes: ['text2video', 'img2video', 'start-end', 'multiframe', 'reference', 'reference-audio'],
+      firstLastFrame: true,
+      multiImage: true,        // 多图参考
+      audio: true,             // 音视频直出
+      bgm: true,               // 背景音乐
+      multiSubject: true,      // 多主体参考
+      maxSubjects: 7,
+      maxKeyframes: 9,
+    },
+    defaults: {
+      aspectRatio: '16:9',
+      duration: 5,
+      resolution: '720p',
+    },
+  },
 ];
