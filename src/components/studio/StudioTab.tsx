@@ -182,6 +182,7 @@ export default function StudioTab() {
     // Interaction Hook - 交互状态机
     const {
         mode,
+        modeRef,
         selection,
         setSelection,
         selectNodes,
@@ -194,6 +195,9 @@ export default function StudioTab() {
         updateSelecting,
         finishInteraction,
         isSelecting,
+        // Connecting
+        startConnecting,
+        isConnecting,
     } = useInteraction();
 
     // 解构选择状态（兼容现有代码）
@@ -201,6 +205,13 @@ export default function StudioTab() {
     const selectedGroupIds = selection.groupIds;
     // 兼容 selectionRect（从 mode 中提取）
     const selectionRect = mode.type === 'selecting' ? mode.rect : null;
+    // 兼容 connectionStart（从 mode 中提取）
+    const connectionStart = mode.type === 'connecting' ? mode.start : null;
+    // Helper: 从 modeRef 获取 connectionStart（用于事件处理器中避免闭包问题）
+    const getConnectionStartRef = useCallback(() => {
+        const currentMode = modeRef.current;
+        return currentMode.type === 'connecting' ? currentMode.start : null;
+    }, [modeRef]);
 
     // 待迁移的 hooks
     const _canvasData = useCanvasData();
@@ -257,14 +268,7 @@ export default function StudioTab() {
     const [draggingGroup, setDraggingGroup] = useState<any>(null);
     const [resizingGroupId, setResizingGroupId] = useState<string | null>(null);
     const [activeGroupNodeIds, setActiveGroupNodeIds] = useState<string[]>([]);
-    // Connection start stores both the node id and the actual screen position of the port
-    const [connectionStart, setConnectionStart] = useState<{
-        id: string,
-        portType: 'input' | 'output',
-        // Screen coordinates of the port center (for converting to canvas coords)
-        screenX: number,
-        screenY: number
-    } | null>(null);
+    // connectionStart 已迁移到 useInteraction.mode
     // selectionRect 已迁移到 useInteraction.mode
     // isSpacePressed 已迁移到 useInteraction
 
@@ -303,7 +307,7 @@ export default function StudioTab() {
     const groupsRef = useRef(groups);
     const historyRef = useRef(history);
     const historyIndexRef = useRef(historyIndex);
-    const connectionStartRef = useRef(connectionStart);
+    // connectionStartRef 已迁移：使用 modeRef 获取 connectionStart
     const rafRef = useRef<number | null>(null); // For RAF Throttling
     const canvasContainerRef = useRef<HTMLDivElement>(null); // Canvas container ref for coordinate offset
     const nodeRefsMap = useRef<Map<string, HTMLDivElement>>(new Map()); // 节点 DOM 引用，用于直接操作
@@ -378,8 +382,8 @@ export default function StudioTab() {
 
     useEffect(() => {
         nodesRef.current = nodes; connectionsRef.current = connections; groupsRef.current = groups;
-        historyRef.current = history; historyIndexRef.current = historyIndex; connectionStartRef.current = connectionStart;
-    }, [nodes, connections, groups, history, historyIndex, connectionStart]);
+        historyRef.current = history; historyIndexRef.current = historyIndex;
+    }, [nodes, connections, groups, history, historyIndex]);
 
     // --- Persistence ---
     useEffect(() => {
@@ -1094,7 +1098,7 @@ export default function StudioTab() {
             if (isSelecting) {
                 updateSelecting(canvasX, canvasY);
                 // Don't return - allow mousePos update for connection preview
-                if (!connectionStartRef.current) return;
+                if (!getConnectionStartRef()) return;
             }
 
             if (dragGroupRef.current) {
@@ -1281,7 +1285,7 @@ export default function StudioTab() {
                 resizeGroupRef.current.currentHeight = newHeight;
             }
         });
-    }, [isSelecting, updateSelecting, isDraggingCanvas, draggingNodeId, resizingNodeId, resizingGroupId, initialSize, resizeStartPos, scale, lastMousePos]);
+    }, [isSelecting, updateSelecting, getConnectionStartRef, isDraggingCanvas, draggingNodeId, resizingNodeId, resizingGroupId, initialSize, resizeStartPos, scale, lastMousePos]);
 
     const handleGlobalMouseUp = useCallback((e: MouseEvent) => {
         if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -1457,7 +1461,7 @@ export default function StudioTab() {
 
         // 检查是否从有输出能力的节点的输出端口开始拖拽并释放到空白区域
         // 如果是，弹出节点选择框（继续编辑功能）
-        const connStart = connectionStartRef.current;
+        const connStart = getConnectionStartRef();
         if (connStart && connStart.portType === 'output' && connStart.id !== 'smart-sequence-dock') {
             const sourceNode = nodesRef.current.find(n => n.id === connStart.id);
             if (sourceNode) {
@@ -1495,9 +1499,11 @@ export default function StudioTab() {
 
         // 清除复制光标
         document.body.style.cursor = '';
-        setIsDraggingCanvas(false); setDraggingNodeId(null); setDraggingNodeParentGroupId(null); setDraggingGroup(null); setResizingGroupId(null); setActiveGroupNodeIds([]); setResizingNodeId(null); setInitialSize(null); setResizeStartPos(null); setConnectionStart(null);
+        // 重置所有交互状态 (connectionStart 通过 finishInteraction 重置)
+        setIsDraggingCanvas(false); setDraggingNodeId(null); setDraggingNodeParentGroupId(null); setDraggingGroup(null); setResizingGroupId(null); setActiveGroupNodeIds([]); setResizingNodeId(null); setInitialSize(null); setResizeStartPos(null);
+        finishInteraction(); // 重置 mode 为 idle (包括 connectionStart)
         dragNodeRef.current = null; resizeContextRef.current = null; dragGroupRef.current = null; resizeGroupRef.current = null;
-    }, [selectionRect, finishInteraction, pan, scale, saveHistory, draggingNodeId, resizingNodeId, resizingGroupId]);
+    }, [selectionRect, finishInteraction, getConnectionStartRef, pan, scale, saveHistory, draggingNodeId, resizingNodeId, resizingGroupId]);
 
     useEffect(() => { window.addEventListener('mousemove', handleGlobalMouseMove); window.addEventListener('mouseup', handleGlobalMouseUp); return () => { window.removeEventListener('mousemove', handleGlobalMouseMove); window.removeEventListener('mouseup', handleGlobalMouseUp); }; }, [handleGlobalMouseMove, handleGlobalMouseUp]);
 
@@ -2668,7 +2674,7 @@ export default function StudioTab() {
                                             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                                             const centerX = rect.left + rect.width / 2;
                                             const centerY = rect.top + rect.height / 2;
-                                            setConnectionStart({
+                                            startConnecting({
                                                 id: `group:${g.id}`,
                                                 portType: 'output',
                                                 screenX: centerX,
@@ -2681,7 +2687,7 @@ export default function StudioTab() {
                                             if (connectionStart && connectionStart.id !== `group:${g.id}`) {
                                                 // 分组只能作为输出端，不能接收连接
                                             }
-                                            setConnectionStart(null);
+                                            finishInteraction();
                                         }}
                                         onDoubleClick={(e) => {
                                             e.stopPropagation();
@@ -2940,11 +2946,11 @@ export default function StudioTab() {
                                 const rect = portElement.getBoundingClientRect();
                                 const centerX = rect.left + rect.width / 2;
                                 const centerY = rect.top + rect.height / 2;
-                                setConnectionStart({ id, portType: type, screenX: centerX, screenY: centerY });
+                                startConnecting({ id, portType: type, screenX: centerX, screenY: centerY });
                             }}
                             onPortMouseUp={(e, id, type) => {
                                 e.stopPropagation();
-                                const start = connectionStartRef.current;
+                                const start = getConnectionStartRef();
                                 if (start && start.id !== id) {
                                     if (start.id === 'smart-sequence-dock') {
                                         // Smart sequence dock connection - do nothing for now
@@ -3089,9 +3095,8 @@ export default function StudioTab() {
                                         });
                                     }
                                 }
-                                // 立即更新 ref，防止 handleGlobalMouseUp 误触发节点选择框
-                                connectionStartRef.current = null;
-                                setConnectionStart(null);
+                                // 结束连接模式
+                                finishInteraction();
                             }}
                             onNodeContextMenu={(e, id) => {
                                 e.stopPropagation(); e.preventDefault();
