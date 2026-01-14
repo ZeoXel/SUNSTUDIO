@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
-    Plus, RotateCcw, History, MessageSquare, X,
+    Plus, Undo2, Redo2, History, MessageSquare, X,
     ImageIcon, Video as VideoIcon, Film,
     Edit, Trash2, Brush, Type,
     Clapperboard, Mic2, Layers, Sun, Moon
@@ -12,6 +12,9 @@ import { NodeType, Canvas } from '@/types';
 interface SidebarDockProps {
     onAddNode: (type: NodeType) => void;
     onUndo: () => void;
+    onRedo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
     isChatOpen: boolean;
     onToggleChat: () => void;
 
@@ -234,6 +237,9 @@ const CanvasPreview: React.FC<{
 export const SidebarDock: React.FC<SidebarDockProps> = ({
     onAddNode,
     onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
     isChatOpen,
     onToggleChat,
     assetHistory,
@@ -505,7 +511,6 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     { id: 'add', icon: Plus, tooltip: '添加节点' },
                     { id: 'history', icon: History, tooltip: '历史记录' },
                     { id: 'chat', icon: MessageSquare, action: onToggleChat, active: isChatOpen, tooltip: '对话' },
-                    { id: 'undo', icon: RotateCcw, action: onUndo, tooltip: '撤销' },
                     {
                         id: 'theme_toggle',
                         icon: theme === 'light' ? Sun : Moon,
@@ -569,6 +574,34 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     )}
                 </div>
 
+            </div>
+
+            {/* Undo/Redo - 独立浮动按钮组 */}
+            <div className="fixed left-6 bottom-6 flex gap-1 p-1 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50">
+                <button
+                    onClick={onUndo}
+                    disabled={!canUndo}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150
+                        ${canUndo
+                            ? 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95'
+                            : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                        }`}
+                    title="撤销 ⌘Z"
+                >
+                    <Undo2 size={14} strokeWidth={2} />
+                </button>
+                <button
+                    onClick={onRedo}
+                    disabled={!canRedo}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150
+                        ${canRedo
+                            ? 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95'
+                            : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                        }`}
+                    title="重做 ⌘⇧Z"
+                >
+                    <Redo2 size={14} strokeWidth={2} />
+                </button>
             </div>
 
             {/* Slide-out Panels */}

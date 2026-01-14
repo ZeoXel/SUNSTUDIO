@@ -3544,6 +3544,9 @@ export default function StudioTab() {
                 <SidebarDock
                     onAddNode={addNode}
                     onUndo={undo}
+                    onRedo={redo}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
                     isChatOpen={isChatOpen}
                     onToggleChat={() => setIsChatOpen(!isChatOpen)}
                     assetHistory={assetHistory}
