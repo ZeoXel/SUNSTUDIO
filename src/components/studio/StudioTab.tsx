@@ -179,8 +179,9 @@ export default function StudioTab() {
         screenToCanvas: viewportScreenToCanvas,
     } = useViewport();
 
-    // Interaction Hook - 选择状态
+    // Interaction Hook - 交互状态机
     const {
+        mode,
         selection,
         setSelection,
         selectNodes,
@@ -188,11 +189,18 @@ export default function StudioTab() {
         clearSelection,
         mousePos, setMousePos,
         isSpacePressed, setIsSpacePressed,
+        // Selection rect
+        startSelecting,
+        updateSelecting,
+        finishInteraction,
+        isSelecting,
     } = useInteraction();
 
     // 解构选择状态（兼容现有代码）
     const selectedNodeIds = selection.nodeIds;
     const selectedGroupIds = selection.groupIds;
+    // 兼容 selectionRect（从 mode 中提取）
+    const selectionRect = mode.type === 'selecting' ? mode.rect : null;
 
     // 待迁移的 hooks
     const _canvasData = useCanvasData();
@@ -257,7 +265,7 @@ export default function StudioTab() {
         screenX: number,
         screenY: number
     } | null>(null);
-    const [selectionRect, setSelectionRect] = useState<any>(null);
+    // selectionRect 已迁移到 useInteraction.mode
     // isSpacePressed 已迁移到 useInteraction
 
     // Node Resizing
@@ -1062,7 +1070,7 @@ export default function StudioTab() {
             selectNodes([]);
             // Use canvas-relative coordinates for selection rect
             const canvasPos = getCanvasMousePos(e.clientX, e.clientY);
-            setSelectionRect({ startX: canvasPos.x, startY: canvasPos.y, currentX: canvasPos.x, currentY: canvasPos.y });
+            startSelecting(canvasPos.x, canvasPos.y);
         }
         if (e.button === 1 || (e.button === 0 && e.shiftKey)) { e.preventDefault(); setIsDraggingCanvas(true); setLastMousePos({ x: e.clientX, y: e.clientY }); }
     };
@@ -1083,8 +1091,8 @@ export default function StudioTab() {
             // Always update mousePos for connection preview (using canvas-relative coords)
             setMousePos({ x: canvasX, y: canvasY });
 
-            if (selectionRect) {
-                setSelectionRect((prev: any) => prev ? ({ ...prev, currentX: canvasX, currentY: canvasY }) : null);
+            if (isSelecting) {
+                updateSelecting(canvasX, canvasY);
                 // Don't return - allow mousePos update for connection preview
                 if (!connectionStartRef.current) return;
             }
@@ -1273,7 +1281,7 @@ export default function StudioTab() {
                 resizeGroupRef.current.currentHeight = newHeight;
             }
         });
-    }, [selectionRect, isDraggingCanvas, draggingNodeId, resizingNodeId, resizingGroupId, initialSize, resizeStartPos, scale, lastMousePos]);
+    }, [isSelecting, updateSelecting, isDraggingCanvas, draggingNodeId, resizingNodeId, resizingGroupId, initialSize, resizeStartPos, scale, lastMousePos]);
 
     const handleGlobalMouseUp = useCallback((e: MouseEvent) => {
         if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -1314,7 +1322,7 @@ export default function StudioTab() {
                     nodeIds: enclosedNodes.map(n => n.id)
                 });
             }
-            setSelectionRect(null);
+            finishInteraction();
         }
 
         // 拖拽结束：一次性提交节点位置到 state ⚡
@@ -1489,7 +1497,7 @@ export default function StudioTab() {
         document.body.style.cursor = '';
         setIsDraggingCanvas(false); setDraggingNodeId(null); setDraggingNodeParentGroupId(null); setDraggingGroup(null); setResizingGroupId(null); setActiveGroupNodeIds([]); setResizingNodeId(null); setInitialSize(null); setResizeStartPos(null); setConnectionStart(null);
         dragNodeRef.current = null; resizeContextRef.current = null; dragGroupRef.current = null; resizeGroupRef.current = null;
-    }, [selectionRect, pan, scale, saveHistory, draggingNodeId, resizingNodeId, resizingGroupId]);
+    }, [selectionRect, finishInteraction, pan, scale, saveHistory, draggingNodeId, resizingNodeId, resizingGroupId]);
 
     useEffect(() => { window.addEventListener('mousemove', handleGlobalMouseMove); window.addEventListener('mouseup', handleGlobalMouseUp); return () => { window.removeEventListener('mousemove', handleGlobalMouseMove); window.removeEventListener('mouseup', handleGlobalMouseUp); }; }, [handleGlobalMouseMove, handleGlobalMouseUp]);
 
