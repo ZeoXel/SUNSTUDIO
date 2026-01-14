@@ -224,8 +224,12 @@ export default function StudioTab() {
         return currentMode.type === 'panning' ? currentMode.lastPos : null;
     }, [modeRef]);
 
-    // 待迁移的 hooks
-    const _canvasData = useCanvasData();
+    // Canvas Data Hook - 画布数据 (nodes, connections, groups)
+    const {
+        nodes, setNodes, nodesRef,
+        connections, setConnections, connectionsRef,
+        groups, setGroups, groupsRef,
+    } = useCanvasData();
 
     // --- Global App State ---
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -260,9 +264,7 @@ export default function StudioTab() {
     const [currentCanvasId, setCurrentCanvasId] = useState<string | null>(null);
 
     // --- Canvas State ---
-    const [nodes, setNodes] = useState<AppNode[]>([]);
-    const [connections, setConnections] = useState<Connection[]>([]);
-    const [groups, setGroups] = useState<Group[]>([]);
+    // nodes, setNodes, connections, setConnections, groups, setGroups 已迁移到 useCanvasData Hook
     const [clipboard, setClipboard] = useState<AppNode | null>(null);
 
     // History
@@ -315,9 +317,7 @@ export default function StudioTab() {
     } | null>(null);
 
     // Refs for closures
-    const nodesRef = useRef(nodes);
-    const connectionsRef = useRef(connections);
-    const groupsRef = useRef(groups);
+    // nodesRef, connectionsRef, groupsRef 已迁移到 useCanvasData Hook
     const historyRef = useRef(history);
     const historyIndexRef = useRef(historyIndex);
     // connectionStartRef 已迁移：使用 modeRef 获取 connectionStart
@@ -393,10 +393,10 @@ export default function StudioTab() {
         return { x: clientX - rect.left, y: clientY - rect.top };
     }, []);
 
+    // nodesRef, connectionsRef, groupsRef 的同步已由 useCanvasData 内部处理
     useEffect(() => {
-        nodesRef.current = nodes; connectionsRef.current = connections; groupsRef.current = groups;
         historyRef.current = history; historyIndexRef.current = historyIndex;
-    }, [nodes, connections, groups, history, historyIndex]);
+    }, [history, historyIndex]);
 
     // --- Persistence ---
     useEffect(() => {
