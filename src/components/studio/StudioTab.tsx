@@ -16,11 +16,12 @@ import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
 import { synthesizeSpeech, MinimaxGenerateParams } from '@/services/minimaxService';
 import { saveToStorage, loadFromStorage } from '@/services/storage';
+import { getMenuStructure, getDefaultModelId, type ProviderDefinition } from '@/config/models';
 import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
     MousePointerClick, LayoutTemplate, X, RefreshCw, Film, Brush, Mic2, Music, FileSearch,
     Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan,
-    Undo2, Redo2
+    Undo2, Redo2, ChevronRightIcon
 } from 'lucide-react';
 
 // Apple Physics Curve
@@ -725,7 +726,7 @@ export default function StudioTab() {
         selectNodes([]);
     }, [saveHistory, selectNodes]);
 
-    const addNode = useCallback((type: NodeType, x?: number, y?: number, initialData?: any) => {
+    const addNode = useCallback((type: NodeType, x?: number, y?: number, initialData?: any, modelId?: string) => {
         // IMAGE_EDITOR type removed - use ImageEditOverlay on existing images instead
 
         try { saveHistory(); } catch (e) { }
@@ -734,11 +735,17 @@ export default function StudioTab() {
         const defaultAudioMode = initialData?.audioMode || 'music';
         const defaultAudioModel = defaultAudioMode === 'music' ? 'suno-v4' : 'speech-2.6-hd';
 
+        // 如果指定了 modelId，优先使用；否则使用默认值
+        const resolveModel = () => {
+            if (modelId) return modelId;
+            if (type === NodeType.VIDEO_GENERATOR) return 'veo3.1';
+            if (type === NodeType.AUDIO_GENERATOR) return defaultAudioModel;
+            if (type.includes('IMAGE')) return 'doubao-seedream-4-5-251128';
+            return 'gemini-2.5-flash';
+        };
+
         const defaults: any = {
-            model: type === NodeType.VIDEO_GENERATOR ? 'veo3.1' :
-                type === NodeType.AUDIO_GENERATOR ? defaultAudioModel :
-                    type.includes('IMAGE') ? 'doubao-seedream-4-5-251128' :
-                        'gemini-2.5-flash',
+            model: resolveModel(),
             generationMode: type === NodeType.VIDEO_GENERATOR ? 'DEFAULT' : undefined,
             // 图像/视频节点默认比例为 16:9
             aspectRatio: (type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR || type === NodeType.VIDEO_FACTORY || type === NodeType.MULTI_FRAME_VIDEO) ? '16:9' : undefined,
@@ -3244,7 +3251,62 @@ export default function StudioTab() {
                         {contextMenuTarget?.type === 'create' && (
                             <>
                                 <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">创建新节点</div>
-                                {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.MULTI_FRAME_VIDEO, NodeType.AUDIO_GENERATOR].map(t => { const ItemIcon = getNodeIcon(t); return (<button key={t} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors" onClick={() => { addNode(t, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale); setContextMenu(null); }}> <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" /> {getNodeNameCN(t)} </button>); })}
+                                {getMenuStructure().map((item, idx) => {
+                                    if (item.type === 'divider') {
+                                        return <div key={`divider-${idx}`} className="my-1.5 border-t border-slate-200 dark:border-slate-700" />;
+                                    }
+                                    const ItemIcon = getNodeIcon(item.type as NodeType);
+
+                                    // 有子菜单的项目 - 悬停展开（按厂商分组）
+                                    if (item.hasSubmenu && item.providers && item.providers.length > 0) {
+                                        return (
+                                            <div key={item.type} className="relative group/submenu">
+                                                <div className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors cursor-pointer">
+                                                    <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" />
+                                                    <span className="flex-1">{item.label}</span>
+                                                    <ChevronRightIcon size={12} className="text-slate-400" />
+                                                </div>
+                                                {/* 二级子菜单 - 显示厂商 */}
+                                                <div className="absolute left-full top-0 ml-1 opacity-0 invisible group-hover/submenu:opacity-100 group-hover/submenu:visible transition-all duration-150 z-[101]">
+                                                    <div className="bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-1 min-w-[140px]">
+                                                        {item.providers.map((provider: ProviderDefinition) => (
+                                                            <button
+                                                                key={provider.id}
+                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-600 dark:hover:text-cyan-400 rounded-lg flex items-center gap-2 transition-colors"
+                                                                onClick={() => {
+                                                                    const nodeType = item.type === 'IMAGE_GENERATOR' ? NodeType.IMAGE_GENERATOR :
+                                                                        item.type === 'VIDEO_GENERATOR' ? NodeType.VIDEO_GENERATOR :
+                                                                        NodeType.AUDIO_GENERATOR;
+                                                                    const defaultModelId = getDefaultModelId(provider.id);
+                                                                    addNode(nodeType, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale, undefined, defaultModelId);
+                                                                    setContextMenu(null);
+                                                                }}
+                                                            >
+                                                                {provider.logo && <img src={provider.logo} alt="" className="w-4 h-4 rounded" onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+                                                                <span>{provider.name}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // 普通项目 - 直接点击创建
+                                    return (
+                                        <button
+                                            key={item.type}
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors"
+                                            onClick={() => {
+                                                addNode(item.type as NodeType, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale);
+                                                setContextMenu(null);
+                                            }}
+                                        >
+                                            <ItemIcon size={12} className="text-blue-600 dark:text-blue-400" />
+                                            {item.label}
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
                         {contextMenuTarget?.type === 'group' && (

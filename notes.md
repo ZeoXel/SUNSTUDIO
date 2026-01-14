@@ -764,3 +764,56 @@ useEffect(() => {
 | `src/components/studio/shared/types.ts` | 79 | 类型定义复用 |
 | `src/components/studio/shared/constants.ts` | 119 | 共享常量 |
 | `src/types/index.ts` | - | AppNode, Connection, Group |
+
+---
+
+# 研究笔记：模型注册表系统
+
+## 现有架构分析
+
+### 节点类型 (src/types/index.ts)
+```typescript
+enum NodeType {
+  PROMPT_INPUT,      // 提示词
+  IMAGE_ASSET,       // 图片素材
+  VIDEO_ASSET,       // 视频素材
+  IMAGE_GENERATOR,   // 图片生成 (多模型)
+  VIDEO_GENERATOR,   // 视频生成 (多模型)
+  VIDEO_FACTORY,     // 视频工厂
+  AUDIO_GENERATOR,   // 音频生成 (音乐/语音)
+  MULTI_FRAME_VIDEO, // 智能多帧
+}
+```
+
+### 模型配置位置
+1. **constants.ts** - IMAGE_MODEL_CONFIG, VIDEO_DURATION_CONFIG
+2. **Node.tsx:1515-1531** - 模型列表硬编码
+3. **addNode()** - 默认模型硬编码
+
+### 当前模型列表
+| 类别 | 模型 ID | 显示名 |
+|------|---------|--------|
+| 图片 | doubao-seedream-4-5-251128 | Seedream 4.5 |
+| 图片 | nano-banana | Nano Banana |
+| 图片 | nano-banana-pro | Nano Banana Pro |
+| 视频 | veo3.1 | Veo 3.1 |
+| 视频 | veo3.1-pro | Veo 3.1 Pro |
+| 视频 | veo3.1-components | Veo 3.1 多图参考 |
+| 视频 | doubao-seedance-1-5-pro-251215 | Seedance 1.5 |
+| 音乐 | suno-v4 | Suno V4 |
+| 语音 | speech-2.6-hd | MiniMax TTS |
+
+### 节点创建菜单
+- **触发**: 双击画布空白区域
+- **位置**: StudioTab.tsx:3244-3248
+- **当前**: 扁平列表，无二级菜单
+
+## 模型 Logo 资源
+
+### 需收集
+- Seedream (豆包/火山引擎)
+- Nano Banana 
+- Veo (Google)
+- Seedance (豆包)
+- Suno
+- MiniMax

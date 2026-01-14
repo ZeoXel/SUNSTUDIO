@@ -30,6 +30,7 @@ import {
     supportsFirstLastFrame,
 } from './shared';
 import type { InputAsset } from './shared';
+import { getProviderByModelId } from '@/config/models';
 
 // Re-export for backward compatibility
 export { globalVideoBlobCache } from './shared';
@@ -956,6 +957,9 @@ const NodeComponent: React.FC<NodeProps> = ({
                                 <span className={`text-[10px] font-bold uppercase tracking-widest ${isVideoNode ? 'text-emerald-500 dark:text-emerald-400' : 'text-blue-500 dark:text-blue-400'}`}>
                                     {isWorking ? "生成中..." : "准备生成"}
                                 </span>
+                                {isVideoNode && !isWorking && (
+                                    <span className="text-[8px] text-emerald-400/60 dark:text-emerald-500/40 mt-1">支持首尾帧</span>
+                                )}
                             </div>
                         )}
                     </div>
@@ -1509,29 +1513,15 @@ const NodeComponent: React.FC<NodeProps> = ({
             );
         }
 
-        let models: { l: string, v: string, group?: string }[] = [];
-        if (node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) {
-            // 视频生成模型
-            models = [
-                // Veo 3.1 系列
-                { l: 'Veo 3.1', v: 'veo3.1' },
-                { l: 'Veo 3.1 Pro', v: 'veo3.1-pro' },
-                { l: 'Veo 3.1 多图参考', v: 'veo3.1-components' },
-                // Seedance (火山引擎)
-                { l: 'Seedance 1.5 Pro', v: 'doubao-seedance-1-5-pro-251215' },
-            ];
-        } else {
-            // 图像生成模型
-            models = [
-                { l: 'Seedream 4.5', v: 'doubao-seedream-4-5-251128' },
-                { l: 'Nano Banana', v: 'nano-banana' },
-                { l: 'Nano Banana Pro', v: 'nano-banana-pro' },
-            ];
-        }
+        // 根据当前模型获取所属厂商，只显示该厂商的模型变体
+        const currentProvider = getProviderByModelId(node.data.model || '');
+        const models = currentProvider
+            ? currentProvider.models.map(m => ({ l: m.name, v: m.id }))
+            : [];
+        const providerLogo = currentProvider?.logo;
 
-        // 获取默认模型名称（当 node.data.model 未设置时）
-        const defaultModel = models[0];
-        const currentModelLabel = models.find(m => m.v === node.data.model)?.l || defaultModel?.l || 'AI Model';
+        // 获取当前模型显示名称
+        const currentModelLabel = models.find(m => m.v === node.data.model)?.l || currentProvider?.name || 'AI Model';
 
         // 剧情延展模式：底部缩略图显示已选取的关键帧而非上游视频
         const isCutOrContinueMode = node.type === NodeType.VIDEO_FACTORY && (generationMode === 'CUT' || generationMode === 'CONTINUE');
@@ -1559,8 +1549,20 @@ const NodeComponent: React.FC<NodeProps> = ({
                     <div className="flex items-center justify-between px-2 pb-1 pt-1 relative z-20">
                         <div className="flex items-center gap-2">
                             <div className="relative group/model">
-                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-400 dark:hover:text-blue-300"><span>{currentModelLabel}</span><ChevronDown size={10} /></div>
-                                <div className="absolute bottom-full left-0 pb-2 w-40 opacity-0 translate-y-2 pointer-events-none group-hover/model:opacity-100 group-hover/model:translate-y-0 group-hover/model:pointer-events-auto transition-all duration-200 z-[200]"><div className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden">{models.map(m => (<div key={m.v} onClick={() => onUpdate(node.id, { model: m.v })} className={`px-3 py-2 text-[10px] font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 ${node.data.model === m.v ? 'text-blue-400 dark:text-blue-300 bg-slate-50 dark:bg-slate-700' : 'text-slate-600 dark:text-slate-300'}`}>{m.l}</div>))}</div></div>
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-400 dark:hover:text-blue-300">
+                                    {providerLogo && <img src={providerLogo} alt="" className="w-3.5 h-3.5 rounded" onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+                                    <span>{currentModelLabel}</span>
+                                    <ChevronDown size={10} />
+                                </div>
+                                <div className="absolute bottom-full left-0 pb-2 w-44 opacity-0 translate-y-2 pointer-events-none group-hover/model:opacity-100 group-hover/model:translate-y-0 group-hover/model:pointer-events-auto transition-all duration-200 z-[200]">
+                                    <div className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                                        {models.map(m => (
+                                            <div key={m.v} onClick={() => onUpdate(node.id, { model: m.v })} className={`px-3 py-2 text-[10px] font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 ${node.data.model === m.v ? 'text-blue-400 dark:text-blue-300 bg-slate-50 dark:bg-slate-700' : 'text-slate-600 dark:text-slate-300'}`}>
+                                                <span>{m.l}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                             {/* 比例选择 - 有素材时只读，无素材时可选择 */}
                             {(() => {
