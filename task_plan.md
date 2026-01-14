@@ -59,13 +59,26 @@ src/hooks/canvas/
 StudioTab.tsx 中已添加 hooks 调用（第 174-178 行），
 暂时使用 _ 前缀标记为未使用状态，为后续渐进式迁移做准备。
 
-## 下一步（后续迁移）
-渐进式替换现有状态：
-1. ✅ 替换 viewport 相关状态 (scale, pan, scaleRef, panRef)
-2. ✅ 替换 selection 相关状态 (selectedNodeIds, selectedGroupIds, mousePos, isSpacePressed)
-3. ⏳ 替换 interaction mode 状态 (dragging*, resizing*, connectionStart 等) - 需要重构事件处理器
-4. ⏳ 替换 canvasData 相关状态 (nodes, connections, groups) - 深度集成，需要谨慎迁移
-5. ⏳ 替换 history 相关状态 - 依赖 canvasData 迁移
+## 迁移进度总结 (Phase 4 完成)
+| 指标 | 重构前 | 重构后 | 减少 |
+|------|--------|--------|------|
+| useState | 45 | 31 | -14 |
+| useRef | 22 | 14 | -8 |
+
+### 已迁移状态
+1. ✅ viewport: scale, pan, scaleRef, panRef → useViewport
+2. ✅ selection: selectedNodeIds, selectedGroupIds → useInteraction.selection
+3. ✅ selectionRect → useInteraction.mode (type: 'selecting')
+4. ✅ connectionStart → useInteraction.mode (type: 'connecting')
+5. ✅ panning: isDraggingCanvas, lastMousePos → useInteraction.mode (type: 'panning')
+6. ✅ mousePos, isSpacePressed → useInteraction
+7. ✅ canvasData: nodes, connections, groups, refs → useCanvasData
+8. ✅ history: history, historyIndex, refs → useCanvasHistory
+
+### 下一步 (Phase 5 - 可选)
+深度迁移剩余交互状态:
+- ⏳ draggingNodeId, resizingNodeId 等 → useInteraction mode
+- ⏳ 组件拆分 (ConnectionsLayer, GroupsLayer 等)
 
 ## 使用示例
 ```typescript
