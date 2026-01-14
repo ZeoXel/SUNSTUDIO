@@ -198,6 +198,10 @@ export default function StudioTab() {
         // Connecting
         startConnecting,
         isConnecting,
+        // Panning
+        startPanning,
+        updatePanning,
+        isPanning,
     } = useInteraction();
 
     // 解构选择状态（兼容现有代码）
@@ -211,6 +215,13 @@ export default function StudioTab() {
     const getConnectionStartRef = useCallback(() => {
         const currentMode = modeRef.current;
         return currentMode.type === 'connecting' ? currentMode.start : null;
+    }, [modeRef]);
+    // 兼容 isDraggingCanvas（从 isPanning 别名）
+    const isDraggingCanvas = isPanning;
+    // Helper: 从 modeRef 获取 panning 的 lastPos（用于事件处理器中避免闭包问题）
+    const getPanningLastPos = useCallback(() => {
+        const currentMode = modeRef.current;
+        return currentMode.type === 'panning' ? currentMode.lastPos : null;
     }, [modeRef]);
 
     // 待迁移的 hooks
@@ -259,7 +270,9 @@ export default function StudioTab() {
     const [historyIndex, setHistoryIndex] = useState(-1);
 
     // Viewport (scale, pan 已迁移到 useViewport, mousePos 已迁移到 useInteraction)
-    const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+    // isDraggingCanvas 已迁移到 useInteraction.isPanning
+    // lastMousePos (panning) 已迁移到 useInteraction.mode.lastPos
+    // 保留 lastMousePos 仅用于 draggingNode fallback 场景
     const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
 
     // Interaction / Selection (已迁移到 useInteraction)
@@ -1063,8 +1076,7 @@ export default function StudioTab() {
         // Space + Left Click = Canvas Drag (like middle mouse or shift+click)
         if (e.button === 0 && isSpacePressed) {
             e.preventDefault();
-            setIsDraggingCanvas(true);
-            setLastMousePos({ x: e.clientX, y: e.clientY });
+            startPanning({ x: e.clientX, y: e.clientY });
             return;
         }
 
@@ -1076,7 +1088,7 @@ export default function StudioTab() {
             const canvasPos = getCanvasMousePos(e.clientX, e.clientY);
             startSelecting(canvasPos.x, canvasPos.y);
         }
-        if (e.button === 1 || (e.button === 0 && e.shiftKey)) { e.preventDefault(); setIsDraggingCanvas(true); setLastMousePos({ x: e.clientX, y: e.clientY }); }
+        if (e.button === 1 || (e.button === 0 && e.shiftKey)) { e.preventDefault(); startPanning({ x: e.clientX, y: e.clientY }); }
     };
 
     const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
@@ -1115,11 +1127,13 @@ export default function StudioTab() {
                 return;
             }
 
-            if (isDraggingCanvas) {
-                const dx = clientX - lastMousePos.x;
-                const dy = clientY - lastMousePos.y;
+            // Panning: 使用 mode.lastPos 避免闭包问题
+            const panningLastPos = getPanningLastPos();
+            if (panningLastPos) {
+                const dx = clientX - panningLastPos.x;
+                const dy = clientY - panningLastPos.y;
                 setPan(p => ({ x: p.x + dx, y: p.y + dy }));
-                setLastMousePos({ x: clientX, y: clientY });
+                updatePanning({ x: clientX, y: clientY });
             }
 
             if (draggingNodeId && dragNodeRef.current && dragNodeRef.current.id === draggingNodeId) {
@@ -1285,7 +1299,7 @@ export default function StudioTab() {
                 resizeGroupRef.current.currentHeight = newHeight;
             }
         });
-    }, [isSelecting, updateSelecting, getConnectionStartRef, isDraggingCanvas, draggingNodeId, resizingNodeId, resizingGroupId, initialSize, resizeStartPos, scale, lastMousePos]);
+    }, [isSelecting, updateSelecting, getConnectionStartRef, getPanningLastPos, updatePanning, draggingNodeId, resizingNodeId, resizingGroupId, initialSize, resizeStartPos, scale, lastMousePos]);
 
     const handleGlobalMouseUp = useCallback((e: MouseEvent) => {
         if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -1499,9 +1513,9 @@ export default function StudioTab() {
 
         // 清除复制光标
         document.body.style.cursor = '';
-        // 重置所有交互状态 (connectionStart 通过 finishInteraction 重置)
-        setIsDraggingCanvas(false); setDraggingNodeId(null); setDraggingNodeParentGroupId(null); setDraggingGroup(null); setResizingGroupId(null); setActiveGroupNodeIds([]); setResizingNodeId(null); setInitialSize(null); setResizeStartPos(null);
-        finishInteraction(); // 重置 mode 为 idle (包括 connectionStart)
+        // 重置所有交互状态
+        setDraggingNodeId(null); setDraggingNodeParentGroupId(null); setDraggingGroup(null); setResizingGroupId(null); setActiveGroupNodeIds([]); setResizingNodeId(null); setInitialSize(null); setResizeStartPos(null);
+        finishInteraction(); // 重置 mode 为 idle (包括 panning, connectionStart, selectionRect)
         dragNodeRef.current = null; resizeContextRef.current = null; dragGroupRef.current = null; resizeGroupRef.current = null;
     }, [selectionRect, finishInteraction, getConnectionStartRef, pan, scale, saveHistory, draggingNodeId, resizingNodeId, resizingGroupId]);
 
