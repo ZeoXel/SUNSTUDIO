@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Node } from './Node';
 import { SidebarDock } from './SidebarDock';
 import { useViewport, useInteraction, useCanvasData, useCanvasHistory } from '@/hooks/canvas';
+import { useBrand } from '@/hooks/useBrand';
 import { AssistantPanel } from './AssistantPanel';
 import { ImageCropper } from './ImageCropper';
 import { ImageEditOverlay } from './ImageEditOverlay';
@@ -232,6 +233,9 @@ const ExpandedView = ({ media, onClose }: { media: any, onClose: () => void }) =
 
 export default function StudioTab() {
     // === HOOKS ===
+    // Brand Config
+    const brand = useBrand();
+
     // Viewport Hook - 替换原有的 scale, pan, scaleRef, panRef
     const {
         scale, pan, setScale, setPan,
@@ -2725,25 +2729,24 @@ export default function StudioTab() {
                         <div className="relative">
                             <div className="relative flex flex-col items-center">
 
-                                {/* Logo & Title */}
+                                {/* Logo & Title - 从 src/config/brand.ts 配置 */}
                                 <div className="flex items-center gap-4 mb-8">
-                                    {/* Logo - 根据主题切换 */}
                                     <div className="relative w-16 h-16 flex items-center justify-center">
                                         <img
-                                            src={theme === 'dark' ? '/logolight.svg' : '/logodark.svg'}
-                                            alt="ZeoCanvas Logo"
+                                            src={theme === 'dark' ? brand.logo.dark : brand.logo.light}
+                                            alt={`${brand.name} Logo`}
                                             className="w-14 h-14 object-contain"
                                         />
                                     </div>
                                     <div className="flex flex-col">
                                         <h1 className="text-4xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
-                                            Zeo<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500 font-extrabold">Canvas</span>
+                                            {brand.namePrefix}<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500 font-extrabold">{brand.nameHighlight}</span>
                                         </h1>
                                         <div className="flex items-center gap-2 mt-1">
                                             <span className="h-1 w-1 rounded-full bg-amber-400" />
                                             <span className="h-1 w-1 rounded-full bg-blue-400" />
                                             <span className="h-1 w-1 rounded-full bg-emerald-400" />
-                                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">AI Creative Workspace</span>
+                                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{brand.slogan}</span>
                                         </div>
                                     </div>
                                 </div>

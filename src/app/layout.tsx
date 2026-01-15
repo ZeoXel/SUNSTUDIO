@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "./Providers";
+import { brand } from "@/config/brand";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,12 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ZeoCanvas - AI Creative Workspace",
-  description: "ZeoCanvas - AI-powered creative workspace",
+  title: brand.title,
+  description: brand.description,
   icons: {
-    icon: "/logodark.svg",
-    shortcut: "/logodark.svg",
-    apple: "/logodark.svg",
+    icon: brand.logo.favicon,
+    shortcut: brand.logo.favicon,
+    apple: brand.logo.favicon,
   },
 };
 
