@@ -19,7 +19,39 @@ export enum NodeStatus {
   ERROR = 'ERROR',
 }
 
-export type VideoGenerationMode = 'DEFAULT' | 'CONTINUE' | 'CUT' | 'FIRST_LAST_FRAME' | 'CHARACTER_REF';
+export type VideoGenerationMode = 'DEFAULT' | 'CONTINUE' | 'CUT' | 'FIRST_LAST_FRAME' | 'CHARACTER_REF' | 'SUBJECT_REF';
+
+// ==================== 主体系统类型 ====================
+
+/** 主体图片 - 单张去背景后的主体图 */
+export interface SubjectImage {
+  id: string;               // 图片唯一ID
+  base64: string;           // 去背景后的图片 (PNG with transparency)
+  originalBase64?: string;  // 原始图片 (用于参考)
+  angle?: 'front' | 'side' | 'back' | '3/4' | string;  // 角度标签
+  createdAt: number;
+}
+
+/** 主体定义 - 全局主体库中的单个主体 */
+export interface Subject {
+  id: string;               // 唯一ID，用于在 prompt 中引用 @id
+  name: string;             // 主体名称 (如 "机器人角色A")
+  category?: string;        // 分类: 'character' | 'object' | 'animal' | 'vehicle' | 自定义
+  description?: string;     // 描述信息
+  thumbnail: string;        // 缩略图 (Base64, 取自第一张图)
+  images: SubjectImage[];   // 多角度图片集合 (1-3张最优, Vidu最多3张)
+  voiceId?: string;         // 关联的音色ID (用于 Vidu 音视频直出)
+  tags?: string[];          // 自定义标签
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 主体选择结果 - 用于生成时传递 */
+export interface SelectedSubject {
+  id: string;
+  images: string[];         // 选中的图片 Base64 数组
+  voiceId?: string;
+}
 
 // 音频生成模式
 export type AudioGenerationMode = 'music' | 'voice';
@@ -130,6 +162,10 @@ export interface AppNode {
       // Veo
       enhance_prompt?: boolean;     // 增强提示词
     };
+
+    // 主体参考（Subject Reference）
+    selectedSubjects?: SelectedSubject[];  // 选中的主体列表
+    subjectAudioMode?: boolean;            // 是否启用音视频直出 (reference-audio)
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }

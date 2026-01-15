@@ -11,12 +11,81 @@ import { ImageCropper } from './ImageCropper';
 import { ImageEditOverlay } from './ImageEditOverlay';
 import { generateViduMultiFrame, queryViduTask, ViduMultiFrameConfig } from '@/services/viduService';
 import { SettingsModal } from './SettingsModal';
-import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, Canvas, VideoGenerationMode } from '@/types';
-import { generateImageFromText, generateVideo, analyzeImage, editImageWithText, planStoryboard, orchestrateVideoPrompt, urlToBase64, extractLastFrame, generateAudio } from '@/services/geminiService';
+import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, Canvas, VideoGenerationMode, Subject } from '@/types';
+import { SubjectEditor } from './subject';
+import { gemini, urlToBase64 } from '@/services/providers';
+
+// ==================== API 兼容层 ====================
+
+// 图像生成
+const generateImageFromText = async (
+  prompt: string,
+  model: string,
+  images: string[] = [],
+  options: { aspectRatio?: string; resolution?: string; count?: number } = {}
+): Promise<string[]> => {
+  const result = await gemini.generateImage({
+    prompt,
+    model: model as any,
+    images,
+    aspectRatio: options.aspectRatio,
+    count: options.count || 1,
+  });
+  return result.urls;
+};
+
+// 图像编辑
+const editImageWithText = async (imageBase64: string, prompt: string, model: string): Promise<string> => {
+  return await gemini.editImage(imageBase64, prompt, model as any);
+};
+
+// 视频生成返回类型
+interface VideoGenResult {
+  uri: string;
+  isFallbackImage?: boolean;
+  videoMetadata?: any;
+  uris?: string[];
+}
+
+// 视频生成 (统一通过 API 路由)
+const generateVideo = async (
+  prompt: string,
+  model: string,
+  options: { aspectRatio?: string; count?: number; generationMode?: any; resolution?: string; duration?: number; videoConfig?: any } = {},
+  inputImageBase64?: string | null,
+  _videoInput?: any,
+  referenceImages?: string[],
+  imageRoles?: string[]
+): Promise<VideoGenResult> => {
+  const response = await fetch('/api/studio/video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      model,
+      aspectRatio: options.aspectRatio || '16:9',
+      duration: options.duration,
+      images: inputImageBase64 ? [inputImageBase64] : referenceImages,
+      imageRoles,
+      videoConfig: options.videoConfig,
+    }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `API错误: ${response.status}`);
+  }
+  const result = await response.json();
+  return {
+    uri: result.videoUrl,
+    isFallbackImage: false,
+    videoMetadata: { taskId: result.taskId },
+    uris: [result.videoUrl],
+  };
+};
 import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
 import { synthesizeSpeech, MinimaxGenerateParams } from '@/services/minimaxService';
-import { saveToStorage, loadFromStorage } from '@/services/storage';
+import { saveToStorage, loadFromStorage, saveSubjects, loadSubjects } from '@/services/storage';
 import { getMenuStructure, getDefaultModelId, type ProviderDefinition } from '@/config/models';
 import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
@@ -337,6 +406,13 @@ export default function StudioTab() {
     const [canvases, setCanvases] = useState<Canvas[]>([]);
     const [currentCanvasId, setCurrentCanvasId] = useState<string | null>(null);
 
+    // --- Subject Library State ---
+    const [subjects, setSubjects] = useState<Subject[]>([]);
+    const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+    const [subjectEditorInitialImage, setSubjectEditorInitialImage] = useState<string | null>(null);
+    const [isSubjectEditorOpen, setIsSubjectEditorOpen] = useState(false);
+    const [externalOpenPanel, setExternalOpenPanel] = useState<'subjects' | null>(null);
+
     // --- Canvas State ---
     // nodes, setNodes, connections, setConnections, groups, setGroups 已迁移到 useCanvasData Hook
     // history, historyIndex, historyRef, historyIndexRef 已迁移到 useCanvasHistory Hook
@@ -475,6 +551,10 @@ export default function StudioTab() {
                 const sAssets = await loadFromStorage<any[]>('assets'); if (sAssets) setAssetHistory(sAssets);
                 const sWfs = await loadFromStorage<Workflow[]>('workflows'); if (sWfs) setWorkflows(sWfs);
 
+                // Load subject library
+                const sSubjects = await loadSubjects();
+                if (sSubjects.length > 0) setSubjects(sSubjects);
+
                 // Load canvases
                 const sCanvases = await loadFromStorage<Canvas[]>('canvases');
                 const sCurrentCanvasId = await loadFromStorage<string>('currentCanvasId');
@@ -575,6 +655,12 @@ export default function StudioTab() {
         saveToStorage('connections', connections);
         saveToStorage('groups', groups);
     }, [assetHistory, workflows, nodes, connections, groups, canvases, currentCanvasId, isLoaded]);
+
+    // Save subject library
+    useEffect(() => {
+        if (!isLoaded) return;
+        saveSubjects(subjects);
+    }, [subjects, isLoaded]);
 
 
     const getApproxNodeHeight = (node: AppNode) => {
@@ -1794,69 +1880,6 @@ export default function StudioTab() {
                 }
                 console.log(`[ImageGen] Collected ${inputImages.length} input images for model ${node.data.model}`);
 
-                const isStoryboard = /分镜|storyboard|sequence|shots|frames|json/i.test(prompt);
-
-                if (isStoryboard) {
-                    try {
-                        const storyboard = await planStoryboard(prompt, upstreamTexts.join('\n'));
-                        if (storyboard.length > 1) {
-                            // ... (storyboard expansion logic preserved) ...
-                            const newNodes: AppNode[] = [];
-                            const newConnections: Connection[] = [];
-                            const COLUMNS = 3;
-                            const gapX = 40; const gapY = 40;
-                            const childWidth = node.width || 420;
-                            const ratio = node.data.aspectRatio || '16:9';
-                            const [rw, rh] = ratio.split(':').map(Number);
-                            const childHeight = (childWidth * rh / rw);
-                            const startX = node.x + (node.width || 420) + 150;
-                            const startY = node.y;
-                            const totalRows = Math.ceil(storyboard.length / COLUMNS);
-
-                            // 验证模型是否为图片生成模型
-                            const validImageModels = ['doubao-seedream-4-5-251128', 'nano-banana', 'nano-banana-pro'];
-                            let usedModel = node.data.model || 'doubao-seedream-4-5-251128';
-                            if (!validImageModels.includes(usedModel) && !usedModel.includes('gemini')) {
-                                usedModel = 'doubao-seedream-4-5-251128';
-                            }
-                            storyboard.forEach((shotPrompt, index) => {
-                                const col = index % COLUMNS;
-                                const row = Math.floor(index / COLUMNS);
-                                const posX = startX + col * (childWidth + gapX);
-                                const posY = startY + row * (childHeight + gapY);
-                                const newNodeId = `n-${Date.now()}-${index}`;
-                                newNodes.push({
-                                    id: newNodeId, type: NodeType.IMAGE_GENERATOR, x: posX, y: posY, width: childWidth, height: childHeight,
-                                    title: `分镜 ${index + 1}`, status: NodeStatus.WORKING,
-                                    data: { ...node.data, model: usedModel, aspectRatio: ratio, prompt: shotPrompt, image: undefined, images: undefined, imageCount: 1 },
-                                    inputs: [node.id]
-                                });
-                                newConnections.push({ from: node.id, to: newNodeId });
-                            });
-
-                            const groupPadding = 30;
-                            const groupWidth = (Math.min(storyboard.length, COLUMNS) * childWidth) + ((Math.min(storyboard.length, COLUMNS) - 1) * gapX) + (groupPadding * 2);
-                            const groupHeight = (totalRows * childHeight) + ((totalRows - 1) * gapY) + (groupPadding * 2);
-
-                            setGroups(prev => [...prev, { id: `g-${Date.now()}`, title: '分镜生成组', x: startX - groupPadding, y: startY - groupPadding, width: groupWidth, height: groupHeight }]);
-                            setNodes(prev => [...prev, ...newNodes]);
-                            setConnections(prev => [...prev, ...newConnections]);
-                            handleNodeUpdate(id, { status: NodeStatus.SUCCESS });
-
-                            newNodes.forEach(async (n) => {
-                                try {
-                                    const res = await generateImageFromText(n.data.prompt!, n.data.model!, inputImages, { aspectRatio: n.data.aspectRatio, resolution: n.data.resolution, count: 1 });
-                                    handleNodeUpdate(n.id, { image: res[0], images: res, model: n.data.model, aspectRatio: n.data.aspectRatio, status: NodeStatus.SUCCESS });
-                                } catch (e: any) {
-                                    handleNodeUpdate(n.id, { error: e.message, status: NodeStatus.ERROR });
-                                }
-                            });
-                            return;
-                        }
-                    } catch (e) {
-                        console.warn("Storyboard planning failed", e);
-                    }
-                }
                 // 判断是否创建新节点：当且仅当节点本身已有素材时
                 // 空节点 → 结果直接显示在当前节点
                 // 有素材的节点 → 创建新节点显示结果
@@ -2499,6 +2522,49 @@ export default function StudioTab() {
 
     const renameCanvas = useCallback((id: string, newTitle: string) => {
         setCanvases(prev => prev.map(c => c.id === id ? { ...c, title: newTitle, updatedAt: Date.now() } : c));
+    }, []);
+
+    // --- Subject Library Handlers ---
+    const handleAddSubject = useCallback(() => {
+        setEditingSubject(null);
+        setSubjectEditorInitialImage(null);
+        setIsSubjectEditorOpen(true);
+    }, []);
+
+    // 从画布素材创建主体
+    const handleCreateSubjectFromImage = useCallback((imageSrc: string) => {
+        setEditingSubject(null);
+        setSubjectEditorInitialImage(imageSrc);
+        setIsSubjectEditorOpen(true);
+    }, []);
+
+    const handleEditSubject = useCallback((id: string) => {
+        const subject = subjects.find(s => s.id === id);
+        if (subject) {
+            setEditingSubject(subject);
+            setIsSubjectEditorOpen(true);
+        }
+    }, [subjects]);
+
+    const handleDeleteSubject = useCallback((id: string) => {
+        setSubjects(prev => prev.filter(s => s.id !== id));
+    }, []);
+
+    const handleSaveSubject = useCallback((subject: Subject) => {
+        setSubjects(prev => {
+            const existingIndex = prev.findIndex(s => s.id === subject.id);
+            if (existingIndex >= 0) {
+                // 更新现有主体
+                const updated = [...prev];
+                updated[existingIndex] = subject;
+                return updated;
+            } else {
+                // 添加新主体
+                return [subject, ...prev];
+            }
+        });
+        setIsSubjectEditorOpen(false);
+        setEditingSubject(null);
     }, []);
 
     // 自动保存当前画布（节流）
@@ -3290,6 +3356,9 @@ export default function StudioTab() {
                             inputAssets={node.inputs.map(i => nodes.find(n => n.id === i)).filter(n => n && (n.data.image || n.data.videoUri || n.data.croppedFrame)).slice(0, 6).map(n => ({ id: n!.id, type: (n!.data.croppedFrame || n!.data.image) ? 'image' : 'video', src: n!.data.croppedFrame || n!.data.image || n!.data.videoUri! }))}
                             onInputReorder={(nodeId, newOrder) => { const node = nodes.find(n => n.id === nodeId); if (node) { setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, inputs: newOrder } : n)); } }}
                             nodeRef={(el) => { if (el) nodeRefsMap.current.set(node.id, el); else nodeRefsMap.current.delete(node.id); }}
+                            subjects={subjects}
+                            onOpenSubjectLibrary={() => setExternalOpenPanel('subjects')}
+                            onCreateSubject={handleCreateSubjectFromImage}
                             isDragging={draggingNodeId === node.id} isResizing={resizingNodeId === node.id} isConnecting={!!connectionStart} isGroupDragging={activeGroupNodeIds.includes(node.id)}
                         />
                     ))}
@@ -3750,6 +3819,14 @@ export default function StudioTab() {
                     onRenameCanvas={renameCanvas}
                     theme={theme}
                     onSetTheme={setTheme}
+                    // Subject Library
+                    subjects={subjects}
+                    onAddSubject={handleAddSubject}
+                    onEditSubject={handleEditSubject}
+                    onDeleteSubject={handleDeleteSubject}
+                    // External panel control
+                    externalOpenPanel={externalOpenPanel}
+                    onExternalPanelHandled={() => setExternalOpenPanel(null)}
                 />
 
                 <AssistantPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
@@ -3800,6 +3877,16 @@ export default function StudioTab() {
                         <Scan size={14} strokeWidth={2.5} />
                     </button>
                 </div>
+
+                {/* Subject Editor Modal */}
+                {isSubjectEditorOpen && (
+                    <SubjectEditor
+                        subject={editingSubject}
+                        initialImage={subjectEditorInitialImage || undefined}
+                        onSave={handleSaveSubject}
+                        onCancel={() => { setIsSubjectEditorOpen(false); setEditingSubject(null); setSubjectEditorInitialImage(null); }}
+                    />
+                )}
             </div>
         </div>
     );

@@ -6,8 +6,10 @@ import {
     ImageIcon, Video as VideoIcon, Film,
     Edit, Trash2, Brush, Type,
     Clapperboard, Layers, Sun, Moon,
-    Music, Speech
+    Music, Speech, Users
 } from 'lucide-react';
+import type { Subject } from '@/types';
+import { SubjectLibraryPanel } from './subject';
 import { NodeType, Canvas } from '@/types';
 
 interface SidebarDockProps {
@@ -31,6 +33,16 @@ interface SidebarDockProps {
     // Theme
     theme: 'light' | 'dark';
     onSetTheme: (theme: 'light' | 'dark') => void;
+
+    // Subject Library
+    subjects?: Subject[];
+    onAddSubject?: () => void;
+    onEditSubject?: (id: string) => void;
+    onDeleteSubject?: (id: string) => void;
+
+    // External panel control
+    externalOpenPanel?: 'subjects' | null;
+    onExternalPanelHandled?: () => void;
 }
 
 // Helper Helpers
@@ -248,9 +260,26 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
     onDeleteCanvas,
     onRenameCanvas,
     theme,
-    onSetTheme
+    onSetTheme,
+    // Subject Library
+    subjects = [],
+    onAddSubject,
+    onEditSubject,
+    onDeleteSubject,
+    // External panel control
+    externalOpenPanel,
+    onExternalPanelHandled,
 }) => {
-    const [activePanel, setActivePanel] = useState<'history' | 'add' | 'canvas' | null>(null);
+    const [activePanel, setActivePanel] = useState<'history' | 'add' | 'canvas' | 'subjects' | null>(null);
+
+    // Handle external panel opening
+    useEffect(() => {
+        if (externalOpenPanel) {
+            setActivePanel(externalOpenPanel);
+            setIsPanelVisible(true);
+            onExternalPanelHandled?.();
+        }
+    }, [externalOpenPanel, onExternalPanelHandled]);
     const [activeHistoryTab, setActiveHistoryTab] = useState<'image' | 'video'>('image');
     const [editingCanvasId, setEditingCanvasId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, id: string, type: 'history' | 'canvas' } | null>(null);
@@ -260,7 +289,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
 
     // Hover Handlers - 优化动效：使用两阶段动画
     const handleSidebarHover = (id: string) => {
-        if (['add', 'history', 'workflow', 'canvas'].includes(id)) {
+        if (['add', 'history', 'workflow', 'canvas', 'subjects'].includes(id)) {
             // 清除所有定时器
             if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
             if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
@@ -318,6 +347,19 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
     }, []);
 
     const renderPanelContent = () => {
+        // 主体库面板
+        if (activePanel === 'subjects') {
+            return (
+                <SubjectLibraryPanel
+                    subjects={subjects}
+                    onAddSubject={onAddSubject || (() => {})}
+                    onEditSubject={onEditSubject || (() => {})}
+                    onDeleteSubject={onDeleteSubject || (() => {})}
+                    onClose={() => setActivePanel(null)}
+                />
+            );
+        }
+
         if (activePanel === 'history') {
             const filteredAssets = assetHistory.filter(a => {
                 if (activeHistoryTab === 'image') return a.type === 'image' || a.type.includes('image') || a.type.includes('image_generator');
@@ -506,6 +548,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                 {[
                     { id: 'add', icon: Plus, tooltip: '添加节点' },
                     { id: 'history', icon: History, tooltip: '历史记录' },
+                    { id: 'subjects', icon: Users, tooltip: '主体库' },
                     { id: 'chat', icon: MessageSquare, action: onToggleChat, active: isChatOpen, tooltip: '对话' },
                     {
                         id: 'theme_toggle',
@@ -515,7 +558,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     },
                 ].map(item => {
                     const isActive = activePanel === item.id || item.active;
-                    const hasPanel = ['add', 'history', 'canvas'].includes(item.id);
+                    const hasPanel = ['add', 'history', 'canvas', 'subjects'].includes(item.id);
                     return (
                         <div key={item.id} className="relative group">
                             <button

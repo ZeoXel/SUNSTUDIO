@@ -1,10 +1,11 @@
 "use client";
 
-import { AppNode, NodeStatus, NodeType, AudioGenerationMode } from '@/types';
-import { Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, Wand2, Scaling, FileSearch, Edit, Loader2, X, Upload, Film, ChevronDown, ChevronUp, Copy, Monitor, Music, Pause, Mic2, Grid3X3, Check, Clock, ArrowRight, Settings2, Speech } from 'lucide-react';
+import { AppNode, NodeStatus, NodeType, AudioGenerationMode, Subject, SelectedSubject } from '@/types';
+import { Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, Wand2, Scaling, FileSearch, Edit, Loader2, X, Upload, Film, ChevronDown, ChevronUp, Copy, Monitor, Music, Pause, Mic2, Grid3X3, Check, Clock, ArrowRight, Settings2, Speech, User } from 'lucide-react';
 import { AudioNodePanel } from './AudioNodePanel';
 import { ConfigExpandButton, CollapsibleContent } from './shared/ConfigExpandSection';
 import { VideoConfigPanel, ViduConfig, VeoConfig, SeedanceConfig, ViduGenerationMode } from './shared/VideoConfigPanel';
+import { SubjectPicker } from './subject';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
 
 // Import shared components and utilities
@@ -87,6 +88,9 @@ interface NodeProps {
     inputAssets?: InputAsset[];
     onInputReorder?: (nodeId: string, newOrder: string[]) => void;
     nodeRef?: (el: HTMLDivElement | null) => void; // 用于父组件直接操作 DOM
+    subjects?: Subject[]; // 主体库
+    onOpenSubjectLibrary?: () => void; // 打开主体库面板
+    onCreateSubject?: (imageSrc: string) => void; // 从图片创建主体
 
     isDragging?: boolean;
     isGroupDragging?: boolean;
@@ -117,7 +121,7 @@ const arePropsEqual = (prev: NodeProps, next: NodeProps) => {
 };
 
 const NodeComponent: React.FC<NodeProps> = ({
-    node, onUpdate, onAction, onDelete, onExpand, onEdit, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, onBatchUpload, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
+    node, onUpdate, onAction, onDelete, onExpand, onEdit, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, onBatchUpload, inputAssets, onInputReorder, nodeRef, subjects, onOpenSubjectLibrary, onCreateSubject, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
 }) => {
     const inverseScale = 1 / Math.max(0.1, zoom);
     // 检测深色模式
@@ -448,6 +452,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                         <div className="flex items-center gap-1">
                             <button onClick={handleDownload} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:border-white/30 dark:hover:border-slate-500/30 transition-colors" title="下载"><Download size={14} /></button>
                             {node.data.image && onEdit && <button onClick={handleEdit} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:border-white/30 dark:hover:border-slate-500/30 transition-colors" title="编辑涂鸦"><Edit size={14} /></button>}
+                            {node.data.image && onCreateSubject && <button onClick={() => onCreateSubject(node.data.image!)} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-blue-500 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-500/30 transition-colors" title="创建主体"><User size={14} /></button>}
                             {node.type !== NodeType.AUDIO_GENERATOR && node.type !== NodeType.VOICE_GENERATOR && <button onClick={handleExpand} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:border-white/30 dark:hover:border-slate-500/30 transition-colors" title="全屏预览"><Maximize2 size={14} /></button>}
                         </div>
                     )}
@@ -1575,6 +1580,20 @@ const NodeComponent: React.FC<NodeProps> = ({
                                                 : 'text2video'
                                     }
                                 />
+                                {/* 主体选择器 - 仅 Vidu 支持 */}
+                                {currentProvider.id === 'vidu' && subjects && subjects.length > 0 && (
+                                    <div className="mt-2">
+                                        <SubjectPicker
+                                            subjects={subjects}
+                                            selected={node.data.selectedSubjects || []}
+                                            onChange={(selected) => onUpdate(node.id, {
+                                                selectedSubjects: selected,
+                                                generationMode: selected.length > 0 ? 'SUBJECT_REF' : node.data.generationMode
+                                            })}
+                                            onOpenLibrary={onOpenSubjectLibrary}
+                                        />
+                                    </div>
+                                )}
                             </CollapsibleContent>
                         </div>
                     )}

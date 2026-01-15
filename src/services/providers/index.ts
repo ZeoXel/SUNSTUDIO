@@ -18,6 +18,7 @@ export * as seedance from './seedance';
 export * as minimax from './minimax';
 export * as suno from './suno';
 export * as vidu from './vidu';
+export * as gemini from './gemini';
 
 // 导入厂商信息
 import { PROVIDER_INFO as NANO_BANANA_INFO } from './nanoBanana';
@@ -27,6 +28,7 @@ import { PROVIDER_INFO as SEEDANCE_INFO } from './seedance';
 import { PROVIDER_INFO as MINIMAX_INFO } from './minimax';
 import { PROVIDER_INFO as SUNO_INFO } from './suno';
 import { PROVIDER_INFO as VIDU_INFO } from './vidu';
+import { PROVIDER_INFO as GEMINI_INFO } from './gemini';
 
 // 导入服务函数
 import * as nanoBananaService from './nanoBanana';
@@ -36,10 +38,11 @@ import * as seedanceService from './seedance';
 import * as minimaxService from './minimax';
 import * as sunoService from './suno';
 import * as viduService from './vidu';
+import * as geminiService from './gemini';
 
 // ==================== 厂商注册表 ====================
 
-export type ProviderId = 'nano-banana' | 'seedream' | 'veo' | 'seedance' | 'minimax' | 'suno' | 'vidu';
+export type ProviderId = 'nano-banana' | 'seedream' | 'veo' | 'seedance' | 'minimax' | 'suno' | 'vidu' | 'gemini';
 
 export const PROVIDERS = {
   'nano-banana': NANO_BANANA_INFO,
@@ -49,6 +52,7 @@ export const PROVIDERS = {
   'minimax': MINIMAX_INFO,
   'suno': SUNO_INFO,
   'vidu': VIDU_INFO,
+  'gemini': GEMINI_INFO,
 } as const;
 
 // 模型ID到厂商ID的映射
@@ -79,6 +83,8 @@ export const getProviderId = (modelId: string): ProviderId | undefined => {
   if (modelId.includes('nano-banana')) return 'nano-banana';
   if (modelId.includes('speech') || modelId.includes('minimax')) return 'minimax';
   if (modelId.includes('chirp') || modelId.includes('suno')) return 'suno';
+  // Gemini 模型匹配
+  if (modelId.includes('gemini') || modelId.includes('imagen')) return 'gemini';
   return undefined;
 };
 
@@ -190,6 +196,17 @@ export const generateImage = async (options: GenerateImageOptions): Promise<stri
         images: options.images,
         n: options.count,
         size: options.size,
+      });
+      return result.urls;
+    }
+
+    case 'gemini': {
+      const result = await geminiService.generateImage({
+        prompt: options.prompt,
+        model: options.model as any,
+        images: options.images,
+        aspectRatio: options.aspectRatio,
+        count: options.count,
       });
       return result.urls;
     }
@@ -318,3 +335,11 @@ export const generateMusic = async (
       throw new Error(`不支持的音乐模型: ${options.model}`);
   }
 };
+
+// ==================== Gemini 专用导出 ====================
+// 图像相关函数 (通过 OpenAI 兼容接口)
+
+export const {
+  generateImage: generateGeminiImage,
+  editImage: editGeminiImage,
+} = geminiService;
