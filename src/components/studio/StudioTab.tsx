@@ -21,7 +21,7 @@ import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
     MousePointerClick, LayoutTemplate, X, RefreshCw, Film, Brush, Mic2, Music, FileSearch,
     Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan,
-    Undo2, Redo2, ChevronRightIcon
+    Undo2, Redo2, ChevronRightIcon, Speech
 } from 'lucide-react';
 
 // Apple Physics Curve
@@ -55,7 +55,15 @@ const saveNodeConfig = (nodeType: string, config: Record<string, any>) => {
 
         fields.forEach(field => {
             if (config[field] !== undefined) {
-                filteredConfig[field] = config[field];
+                // 特殊处理 multiFrameData：只保存配置，不保存 frames 数据
+                if (field === 'multiFrameData' && config.multiFrameData) {
+                    filteredConfig.multiFrameData = {
+                        viduModel: config.multiFrameData.viduModel,
+                        viduResolution: config.multiFrameData.viduResolution,
+                    };
+                } else {
+                    filteredConfig[field] = config[field];
+                }
             }
         });
 
@@ -686,6 +694,7 @@ export default function StudioTab() {
             case NodeType.VIDEO_GENERATOR: return '视频生成';
             case NodeType.VIDEO_FACTORY: return '视频工厂';
             case NodeType.AUDIO_GENERATOR: return '灵感音乐';
+            case NodeType.VOICE_GENERATOR: return '语音合成';
             case NodeType.IMAGE_EDITOR: return '图像编辑';
             case NodeType.MULTI_FRAME_VIDEO: return '智能多帧';
             default: return t;
@@ -699,7 +708,8 @@ export default function StudioTab() {
             case NodeType.IMAGE_GENERATOR: return ImageIcon;
             case NodeType.VIDEO_GENERATOR: return Film;
             case NodeType.VIDEO_FACTORY: return VideoIcon;
-            case NodeType.AUDIO_GENERATOR: return Mic2;
+            case NodeType.AUDIO_GENERATOR: return Music;
+            case NodeType.VOICE_GENERATOR: return Speech;
             case NodeType.IMAGE_EDITOR: return Brush;
             case NodeType.MULTI_FRAME_VIDEO: return Scan;
             default: return Plus;
@@ -788,12 +798,33 @@ export default function StudioTab() {
         const defaultAudioMode = initialData?.audioMode || savedConfig.audioMode || 'music';
         const defaultAudioModel = defaultAudioMode === 'music' ? 'suno-v4' : 'speech-2.6-hd';
 
-        // 如果指定了 modelId，优先使用；其次使用保存的配置；最后使用默认值
+        // 判断两个模型是否属于同一厂商
+        const isSameProvider = (model1?: string, model2?: string): boolean => {
+            if (!model1 || !model2) return false;
+            // 根据模型名前缀判断厂商
+            const getProvider = (m: string) => {
+                if (m.startsWith('veo')) return 'veo';
+                if (m.startsWith('vidu')) return 'vidu';
+                if (m.startsWith('doubao-seed')) return 'doubao';
+                if (m.startsWith('nano-banana')) return 'nano';
+                if (m.startsWith('gemini')) return 'gemini';
+                if (m.startsWith('suno')) return 'suno';
+                if (m.startsWith('speech')) return 'minimax';
+                return m.split('-')[0]; // fallback: 使用第一段作为厂商标识
+            };
+            return getProvider(model1) === getProvider(model2);
+        };
+
+        // 如果传入了 modelId 且与保存的配置属于同一厂商，使用保存的配置；否则使用传入的 modelId
         const resolveModel = () => {
-            if (modelId) return modelId;
-            if (savedConfig.model) return savedConfig.model;
+            if (modelId && savedConfig.model && isSameProvider(modelId, savedConfig.model)) {
+                return savedConfig.model; // 同厂商，使用保存的配置
+            }
+            if (modelId) return modelId; // 不同厂商或无保存配置，使用传入的 modelId
+            if (savedConfig.model) return savedConfig.model; // 无传入 modelId，使用保存的配置
             if (type === NodeType.VIDEO_GENERATOR) return 'veo3.1';
-            if (type === NodeType.AUDIO_GENERATOR) return defaultAudioModel;
+            if (type === NodeType.AUDIO_GENERATOR) return 'suno-v4';
+            if (type === NodeType.VOICE_GENERATOR) return 'speech-2.6-hd';
             if (type.includes('IMAGE')) return 'doubao-seedream-4-5-251128';
             return 'gemini-2.5-flash';
         };
@@ -811,9 +842,8 @@ export default function StudioTab() {
             videoConfig: savedConfig.videoConfig,
             imageCount: savedConfig.imageCount,
             // 音频节点默认配置（合并保存的配置）
-            audioMode: type === NodeType.AUDIO_GENERATOR ? defaultAudioMode : undefined,
             musicConfig: type === NodeType.AUDIO_GENERATOR ? { mv: 'chirp-v4', tags: 'pop, catchy', ...savedConfig.musicConfig } : undefined,
-            voiceConfig: type === NodeType.AUDIO_GENERATOR ? { voiceId: 'female-shaonv', speed: 1, emotion: 'calm', ...savedConfig.voiceConfig } : undefined,
+            voiceConfig: type === NodeType.VOICE_GENERATOR ? { voiceId: 'female-shaonv', speed: 1, emotion: 'calm', ...savedConfig.voiceConfig } : undefined,
             // 多帧视频节点默认配置（合并保存的配置）
             multiFrameData: type === NodeType.MULTI_FRAME_VIDEO ? {
                 frames: [],
@@ -831,6 +861,7 @@ export default function StudioTab() {
             [NodeType.VIDEO_GENERATOR]: '视频生成',
             [NodeType.VIDEO_FACTORY]: '视频工厂',
             [NodeType.AUDIO_GENERATOR]: '灵感音乐',
+            [NodeType.VOICE_GENERATOR]: '语音合成',
             [NodeType.IMAGE_EDITOR]: '图像编辑',
             [NodeType.MULTI_FRAME_VIDEO]: '智能多帧'
         };
@@ -843,7 +874,7 @@ export default function StudioTab() {
         // 计算节点预估高度并找到不重叠的位置
         const nodeWidth = 420;
         const [rw, rh] = (defaults.aspectRatio || '16:9').split(':').map(Number);
-        const nodeHeight = type === NodeType.AUDIO_GENERATOR ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
+        const nodeHeight = type === NodeType.AUDIO_GENERATOR || type === NodeType.VOICE_GENERATOR ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
             type === NodeType.PROMPT_INPUT ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
                 type === NodeType.MULTI_FRAME_VIDEO ? Math.round(nodeWidth * 9 / 16) : // 16:9 比例
                     (nodeWidth * rh / rw);
@@ -3350,9 +3381,18 @@ export default function StudioTab() {
                                                                 key={provider.id}
                                                                 className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-600 dark:hover:text-cyan-400 rounded-lg flex items-center gap-2 transition-colors"
                                                                 onClick={() => {
-                                                                    const nodeType = item.type === 'IMAGE_GENERATOR' ? NodeType.IMAGE_GENERATOR :
-                                                                        item.type === 'VIDEO_GENERATOR' ? NodeType.VIDEO_GENERATOR :
-                                                                        NodeType.AUDIO_GENERATOR;
+                                                                    // 根据 provider 类型决定节点类型
+                                                                    let nodeType: NodeType;
+                                                                    if (item.type === 'IMAGE_GENERATOR') {
+                                                                        nodeType = NodeType.IMAGE_GENERATOR;
+                                                                    } else if (item.type === 'VIDEO_GENERATOR') {
+                                                                        nodeType = NodeType.VIDEO_GENERATOR;
+                                                                    } else if (item.type === 'AUDIO_GENERATOR') {
+                                                                        // 音频：根据 subcategory 区分音乐/语音
+                                                                        nodeType = provider.subcategory === 'voice' ? NodeType.VOICE_GENERATOR : NodeType.AUDIO_GENERATOR;
+                                                                    } else {
+                                                                        nodeType = NodeType.AUDIO_GENERATOR;
+                                                                    }
                                                                     const defaultModelId = getDefaultModelId(provider.id);
                                                                     addNode(nodeType, (contextMenu.x - pan.x) / scale, (contextMenu.y - pan.y) / scale, undefined, defaultModelId);
                                                                     setContextMenu(null);
@@ -3463,7 +3503,11 @@ export default function StudioTab() {
                                 };
 
                                 // 根据节点类型设置默认模型
+                                // 读取保存的配置
+                                const savedConfig = loadNodeConfig(nodeType);
+
                                 const getDefaultModel = () => {
+                                    if (savedConfig.model) return savedConfig.model;
                                     if (nodeType === NodeType.PROMPT_INPUT) return 'gemini-2.5-flash';
                                     if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
                                     if (nodeType === NodeType.VIDEO_GENERATOR) return 'veo3.1';
@@ -3476,6 +3520,8 @@ export default function StudioTab() {
 
                                 // 如果创建智能多帧节点且源节点有图片，将图片作为第一帧
                                 const getMultiFrameData = () => {
+                                    const viduModel = savedConfig.multiFrameData?.viduModel || 'viduq2-turbo';
+                                    const viduResolution = savedConfig.multiFrameData?.viduResolution || '720p';
                                     if (nodeType === NodeType.MULTI_FRAME_VIDEO && hasImage && sourceNode.data.image) {
                                         return {
                                             frames: [{
@@ -3483,12 +3529,12 @@ export default function StudioTab() {
                                                 src: sourceNode.data.image,
                                                 transition: { duration: 4, prompt: '' }
                                             }],
-                                            viduModel: 'viduq2-turbo' as const,
-                                            viduResolution: '720p' as const,
+                                            viduModel,
+                                            viduResolution,
                                         };
                                     }
                                     return nodeType === NodeType.MULTI_FRAME_VIDEO
-                                        ? { frames: [], viduModel: 'viduq2-turbo' as const, viduResolution: '720p' as const }
+                                        ? { frames: [], viduModel, viduResolution }
                                         : undefined;
                                 };
 
@@ -3503,8 +3549,13 @@ export default function StudioTab() {
                                     status: NodeStatus.IDLE,
                                     data: {
                                         model: getDefaultModel(),
-                                        aspectRatio: '16:9',
+                                        aspectRatio: savedConfig.aspectRatio || '16:9',
+                                        resolution: savedConfig.resolution,
+                                        duration: savedConfig.duration,
+                                        imageCount: savedConfig.imageCount,
+                                        videoConfig: savedConfig.videoConfig,
                                         ...(generationMode && { generationMode }),
+                                        ...(!generationMode && savedConfig.generationMode && { generationMode: savedConfig.generationMode }),
                                         ...(promptToInject && { prompt: promptToInject }), // 注入提示词
                                         ...(getMultiFrameData() && { multiFrameData: getMultiFrameData() }),
                                     },
