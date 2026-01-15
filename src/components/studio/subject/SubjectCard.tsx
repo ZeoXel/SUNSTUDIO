@@ -69,7 +69,7 @@ export const SubjectCard: React.FC<SubjectCardProps> = ({
         <img
           src={subject.thumbnail}
           alt={subject.name}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-cover"
           draggable={false}
         />
         {subject.images.length > 1 && (
@@ -102,7 +102,7 @@ export const SubjectCard: React.FC<SubjectCardProps> = ({
         <img
           src={subject.thumbnail}
           alt={subject.name}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-cover"
           draggable={false}
         />
       </div>
@@ -149,13 +149,6 @@ export const SubjectCard: React.FC<SubjectCardProps> = ({
             <Trash2 size={12} className="text-slate-600 dark:text-slate-300 group-hover/del:text-white" />
           </button>
         )}
-      </div>
-
-      {/* @id 引用提示 */}
-      <div className="absolute bottom-8 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="text-[9px] text-white/80 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
-          引用: @{subject.id}
-        </div>
       </div>
     </div>
   );

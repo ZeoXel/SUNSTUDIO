@@ -106,7 +106,7 @@ export const SubjectLibraryPanel: React.FC<SubjectLibraryPanelProps> = ({
       {subjects.length > 0 && (
         <div className="p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
           <div className="text-[10px] text-slate-500 dark:text-slate-400 text-center">
-            在提示词中使用 <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded">@主体ID</code> 引用主体
+            在提示词中使用 <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded">@主体名称</code> 引用主体
           </div>
         </div>
       )}
