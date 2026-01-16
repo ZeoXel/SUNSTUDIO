@@ -6,7 +6,7 @@ import {
     ImageIcon, Video as VideoIcon, Film,
     Edit, Trash2, Brush, Type,
     Clapperboard, Layers, Sun, Moon,
-    Music, Speech, Users, Camera
+    Music, Speech, Library, Camera
 } from 'lucide-react';
 import type { Subject } from '@/types';
 import { SubjectLibraryPanel } from './subject';
@@ -292,7 +292,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
 
     // Hover Handlers - 优化动效：使用两阶段动画
     const handleSidebarHover = (id: string) => {
-        if (['add', 'history', 'workflow', 'canvas', 'subjects'].includes(id)) {
+        if (['history', 'workflow', 'canvas', 'subjects'].includes(id)) {
             // 清除所有定时器
             if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
             if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
@@ -508,36 +508,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
             );
         }
 
-        // Default: Add Node
-        return (
-            <>
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
-                    <button onClick={() => setActivePanel(null)}><X size={14} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100" /></button>
-                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                        添加节点
-                    </span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-                    {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.IMAGE_3D_CAMERA, NodeType.VIDEO_GENERATOR, NodeType.MULTI_FRAME_VIDEO, NodeType.AUDIO_GENERATOR, NodeType.VOICE_GENERATOR].map(t => {
-                        const ItemIcon = getNodeIcon(t);
-                        return (
-                            <button
-                                key={t}
-                                onClick={(e) => { e.stopPropagation(); onAddNode(t); setActivePanel(null); }}
-                                className="w-full text-left p-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-3 text-sm text-slate-700 dark:text-slate-300 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-lg"
-                            >
-                                <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-blue-500 dark:text-blue-400 shadow-inner">
-                                    <ItemIcon size={16} />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="font-medium text-xs">{getNodeNameCN(t)}</span>
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
-            </>
-        );
+        // 不再显示添加节点面板，仅保留双击画布创建入口
+        return null;
     };
 
     return (
@@ -549,9 +521,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                 onMouseLeave={handleSidebarLeave}
             >
                 {[
-                    { id: 'add', icon: Plus, tooltip: '添加节点' },
                     { id: 'history', icon: History, tooltip: '历史记录' },
-                    { id: 'subjects', icon: Users, tooltip: '主体库' },
+                    { id: 'subjects', icon: Library, tooltip: '主体库' },
                     { id: 'chat', icon: MessageSquare, action: onToggleChat, active: isChatOpen, tooltip: '对话' },
                     {
                         id: 'theme_toggle',
@@ -561,7 +532,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     },
                 ].map(item => {
                     const isActive = activePanel === item.id || item.active;
-                    const hasPanel = ['add', 'history', 'canvas', 'subjects'].includes(item.id);
+                    const hasPanel = ['history', 'canvas', 'subjects'].includes(item.id);
                     return (
                         <div key={item.id} className="relative group">
                             <button

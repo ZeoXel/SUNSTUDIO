@@ -551,6 +551,33 @@ export default function StudioTab() {
         return { x: clientX - rect.left, y: clientY - rect.top };
     }, []);
 
+    // Helper to calculate the center of all nodes (重心)
+    const getNodesCenterPoint = useCallback(() => {
+        const currentNodes = nodesRef.current;
+        if (currentNodes.length === 0) {
+            // 如果没有节点，返回画布中心
+            const rect = canvasContainerRef.current?.getBoundingClientRect();
+            if (!rect) return { x: 0, y: 0 };
+            return { x: rect.width / 2, y: rect.height / 2 };
+        }
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        currentNodes.forEach(node => {
+            const w = node.width || 420;
+            const h = node.height || 360;
+            minX = Math.min(minX, node.x);
+            minY = Math.min(minY, node.y);
+            maxX = Math.max(maxX, node.x + w);
+            maxY = Math.max(maxY, node.y + h);
+        });
+
+        // 返回所有节点包围盒的中心点（画布坐标）
+        return {
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2
+        };
+    }, [nodesRef]);
+
     // nodesRef, connectionsRef, groupsRef 的同步已由 useCanvasData 内部处理
     // historyRef, historyIndexRef 的同步已由 useCanvasHistory 内部处理
 
@@ -2985,13 +3012,14 @@ export default function StudioTab() {
                     // 只在画布空白区域双击时触发
                     const target = e.target as HTMLElement;
 
-                    // 排除：节点、分组、侧边栏、对话面板、节点配置面板
+                    // 排除：节点、分组、侧边栏、对话面板、节点配置面板、底部工具栏
                     const isOnNode = target.closest('[data-node-id]');
                     const isOnGroup = target.closest('[data-group-id]');
                     const isOnSidebar = target.closest('[data-sidebar]');
                     const isOnChat = target.closest('[data-chat-panel]');
                     const isOnConfigPanel = target.closest('[data-config-panel]');
-                    if (isOnNode || isOnGroup || isOnSidebar || isOnChat || isOnConfigPanel || selectionRect) return;
+                    const isOnBottomToolbar = target.closest('[data-bottom-toolbar]');
+                    if (isOnNode || isOnGroup || isOnSidebar || isOnChat || isOnConfigPanel || isOnBottomToolbar || selectionRect) return;
 
                     // 转换为画布坐标并检查是否在空白区域
                     const rect = canvasContainerRef.current?.getBoundingClientRect();
@@ -4074,7 +4102,7 @@ export default function StudioTab() {
                 <AssistantPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
                 {/* 底部工具栏：撤销/重做 + 缩放控制 */}
-                <div className="absolute bottom-8 right-8 flex items-center gap-1 px-2 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-300 dark:border-slate-600 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div data-bottom-toolbar className="absolute bottom-8 right-8 flex items-center gap-1 px-2 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-300 dark:border-slate-600 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     {/* 撤销/重做 */}
                     <button
                         onClick={undo}
@@ -4097,7 +4125,35 @@ export default function StudioTab() {
                     <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-1" />
 
                     {/* 缩放控制 */}
-                    <button onClick={() => setScale(s => Math.max(0.2, s - 0.1))} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700">
+                    <button
+                        onClick={() => {
+                            // 以节点重心为中心缩放
+                            const currentScale = scaleRef.current;
+                            const currentPan = panRef.current;
+                            const newScale = Math.max(0.2, currentScale - 0.1);
+
+                            const rect = canvasContainerRef.current?.getBoundingClientRect();
+                            if (!rect) {
+                                setScale(newScale);
+                                return;
+                            }
+
+                            // 获取节点重心在画布坐标系中的位置
+                            const centerCanvas = getNodesCenterPoint();
+
+                            // 将重心转换为屏幕坐标
+                            const centerScreenX = centerCanvas.x * currentScale + currentPan.x;
+                            const centerScreenY = centerCanvas.y * currentScale + currentPan.y;
+
+                            // 计算新的 pan，使重心在缩放后保持在相同的屏幕位置
+                            const newPanX = centerScreenX - centerCanvas.x * newScale;
+                            const newPanY = centerScreenY - centerCanvas.y * newScale;
+
+                            setScale(newScale);
+                            setPan({ x: newPanX, y: newPanY });
+                        }}
+                        className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
                         <Minus size={14} strokeWidth={2.5} />
                     </button>
                     <span
@@ -4107,7 +4163,35 @@ export default function StudioTab() {
                     >
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={() => setScale(s => Math.min(3, s + 0.1))} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700">
+                    <button
+                        onClick={() => {
+                            // 以节点重心为中心缩放
+                            const currentScale = scaleRef.current;
+                            const currentPan = panRef.current;
+                            const newScale = Math.min(3, currentScale + 0.1);
+
+                            const rect = canvasContainerRef.current?.getBoundingClientRect();
+                            if (!rect) {
+                                setScale(newScale);
+                                return;
+                            }
+
+                            // 获取节点重心在画布坐标系中的位置
+                            const centerCanvas = getNodesCenterPoint();
+
+                            // 将重心转换为屏幕坐标
+                            const centerScreenX = centerCanvas.x * currentScale + currentPan.x;
+                            const centerScreenY = centerCanvas.y * currentScale + currentPan.y;
+
+                            // 计算新的 pan，使重心在缩放后保持在相同的屏幕位置
+                            const newPanX = centerScreenX - centerCanvas.x * newScale;
+                            const newPanY = centerScreenY - centerCanvas.y * newScale;
+
+                            setScale(newScale);
+                            setPan({ x: newPanX, y: newPanY });
+                        }}
+                        className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
                         <Plus size={14} strokeWidth={2.5} />
                     </button>
 
