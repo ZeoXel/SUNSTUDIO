@@ -42,6 +42,38 @@ export const generateImage = async (options: ImageGenerateOptions): Promise<Imag
   }
 
   const provider = getProviderFromModel(options.model);
+  const count = options.count || 1;
+
+  // nano-banana 需要通过批量请求实现组图生成
+  if (provider === 'nano-banana' && count > 1) {
+    console.log(`[Image] Batch generating ${count} images with ${options.model}`);
+
+    const requests = Array.from({ length: count }, () =>
+      generateSingleImage(baseUrl, apiKey, options, provider)
+    );
+
+    const results = await Promise.all(requests);
+    const allUrls = results.flatMap(r => r.urls);
+
+    return {
+      urls: allUrls,
+      created: results[0]?.created || Date.now(),
+    };
+  }
+
+  // 单图生成或 Gemini 模型
+  return generateSingleImage(baseUrl, apiKey, options, provider);
+};
+
+/**
+ * 生成单张图像（内部函数）
+ */
+const generateSingleImage = async (
+  baseUrl: string,
+  apiKey: string,
+  options: ImageGenerateOptions,
+  provider: 'nano-banana' | 'gemini'
+): Promise<ImageGenerationResult> => {
   const body: Record<string, any> = {
     model: options.model,
     prompt: options.prompt,
@@ -60,8 +92,6 @@ export const generateImage = async (options: ImageGenerateOptions): Promise<Imag
   if (provider === 'nano-banana' && options.imageSize) {
     body.image_size = options.imageSize;
   }
-
-  console.log(`[Image] Generating with model: ${options.model}, provider: ${provider}`);
 
   const response = await fetch(`${baseUrl}/v1/images/generations`, {
     method: 'POST',

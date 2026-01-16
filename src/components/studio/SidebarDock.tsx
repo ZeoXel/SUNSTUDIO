@@ -6,7 +6,7 @@ import {
     ImageIcon, Video as VideoIcon, Film,
     Edit, Trash2, Brush, Type,
     Clapperboard, Layers, Sun, Moon,
-    Music, Speech, Users
+    Music, Speech, Users, Camera
 } from 'lucide-react';
 import type { Subject } from '@/types';
 import { SubjectLibraryPanel } from './subject';
@@ -58,6 +58,7 @@ const getNodeNameCN = (t: string) => {
         case NodeType.VOICE_GENERATOR: return '语音合成';
         case NodeType.IMAGE_EDITOR: return '图像编辑';
         case NodeType.MULTI_FRAME_VIDEO: return '智能多帧';
+        case NodeType.IMAGE_3D_CAMERA: return '3D 运镜';
         default: return t;
     }
 };
@@ -74,6 +75,7 @@ const getNodeIcon = (t: string) => {
         case NodeType.VOICE_GENERATOR: return Speech;
         case NodeType.IMAGE_EDITOR: return Brush;
         case NodeType.MULTI_FRAME_VIDEO: return Layers;
+        case NodeType.IMAGE_3D_CAMERA: return Camera;
         default: return Plus;
     }
 };
@@ -95,6 +97,7 @@ const getNodeColor = (type: string) => {
         case NodeType.VOICE_GENERATOR: return '#fb7185'; // rose (MiniMax 语音)
         case NodeType.IMAGE_EDITOR: return '#facc15'; // yellow
         case NodeType.MULTI_FRAME_VIDEO: return '#10b981'; // emerald (智能多帧-绿色)
+        case NodeType.IMAGE_3D_CAMERA: return '#a855f7'; // purple (3D 运镜-紫色)
         default: return '#cbd5e1';
     }
 };
@@ -515,7 +518,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     </span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-                    {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.MULTI_FRAME_VIDEO, NodeType.AUDIO_GENERATOR, NodeType.VOICE_GENERATOR].map(t => {
+                    {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.IMAGE_3D_CAMERA, NodeType.VIDEO_GENERATOR, NodeType.MULTI_FRAME_VIDEO, NodeType.AUDIO_GENERATOR, NodeType.VOICE_GENERATOR].map(t => {
                         const ItemIcon = getNodeIcon(t);
                         return (
                             <button

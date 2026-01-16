@@ -85,6 +85,7 @@ export function getMenuStructure(): MenuCategory[] {
     { type: 'AUDIO_GENERATOR', label: '音频生成', icon: 'Music', hasSubmenu: true, providers: AUDIO_PROVIDERS },
     { type: 'divider', label: '', icon: '', hasSubmenu: false },
     { type: 'MULTI_FRAME_VIDEO', label: '智能多帧', icon: 'Scan', hasSubmenu: false },
+    { type: 'IMAGE_3D_CAMERA', label: '3D 运镜', icon: 'Camera', hasSubmenu: false },
   ];
 }
 

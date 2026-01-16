@@ -10,6 +10,14 @@ export enum NodeType {
   AUDIO_GENERATOR = 'AUDIO_GENERATOR', // Suno 音乐生成
   VOICE_GENERATOR = 'VOICE_GENERATOR', // MiniMax 语音合成
   MULTI_FRAME_VIDEO = 'MULTI_FRAME_VIDEO', // 智能多帧视频：多张关键帧+转场生成视频
+  IMAGE_3D_CAMERA = 'IMAGE_3D_CAMERA', // 3D 运镜：通过 3D 相机控制重绘图片视角
+}
+
+// 3D 相机参数
+export interface CameraParams {
+  azimuth: number;     // 0-360 水平旋转角（方位角）
+  elevation: number;   // -30~60 垂直倾角（俯仰角）
+  distance: number;    // 0.6-1.5 焦距倍数（变焦系数）
 }
 
 export enum NodeStatus {
@@ -166,6 +174,9 @@ export interface AppNode {
     // 主体参考（Subject Reference）
     selectedSubjects?: SelectedSubject[];  // 选中的主体列表
     subjectAudioMode?: boolean;            // 是否启用音视频直出 (reference-audio)
+
+    // 3D 相机参数
+    cameraParams?: CameraParams;           // 相机视角参数
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }

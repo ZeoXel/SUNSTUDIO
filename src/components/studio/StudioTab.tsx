@@ -45,8 +45,8 @@ const generateImageFromText = async (
 };
 
 // 图像编辑 (通过 API route)
-const editImageWithText = async (imageBase64: string, prompt: string, model: string): Promise<string> => {
-  const results = await generateImageFromText(prompt, model, [imageBase64], { count: 1 });
+const editImageWithText = async (imageBase64: string, prompt: string, model: string, aspectRatio?: string): Promise<string> => {
+  const results = await generateImageFromText(prompt, model, [imageBase64], { count: 1, aspectRatio });
   return results[0];
 };
 
@@ -103,7 +103,7 @@ import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
     MousePointerClick, LayoutTemplate, X, RefreshCw, Film, Brush, Mic2, Music, FileSearch,
     Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan,
-    Undo2, Redo2, ChevronRightIcon, Speech
+    Undo2, Redo2, ChevronRightIcon, Speech, Camera
 } from 'lucide-react';
 
 // Apple Physics Curve
@@ -680,6 +680,7 @@ export default function StudioTab() {
         const width = node.width || 420;
         if (node.type === NodeType.IMAGE_EDITOR) return 360;
         if (node.type === NodeType.AUDIO_GENERATOR) return Math.round(width * 9 / 16); // 16:9 比例
+        if (node.type === NodeType.IMAGE_3D_CAMERA) return 380; // 3D 运镜节点固定高度
         // 提示词节点和素材节点默认 16:9 比例
         const defaultRatio = (node.type === NodeType.PROMPT_INPUT || node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET) ? '16:9' : '1:1';
         const [w, h] = (node.data.aspectRatio || defaultRatio).split(':').map(Number);
@@ -799,6 +800,7 @@ export default function StudioTab() {
             case NodeType.VOICE_GENERATOR: return '语音合成';
             case NodeType.IMAGE_EDITOR: return '图像编辑';
             case NodeType.MULTI_FRAME_VIDEO: return '智能多帧';
+            case NodeType.IMAGE_3D_CAMERA: return '3D 运镜';
             default: return t;
         }
     };
@@ -814,6 +816,7 @@ export default function StudioTab() {
             case NodeType.VOICE_GENERATOR: return Speech;
             case NodeType.IMAGE_EDITOR: return Brush;
             case NodeType.MULTI_FRAME_VIDEO: return Scan;
+            case NodeType.IMAGE_3D_CAMERA: return Camera;
             default: return Plus;
         }
     };
@@ -2361,6 +2364,88 @@ export default function StudioTab() {
                 const res = await editImageWithText(img, prompt, node.data.model || 'gemini-2.5-flash-image');
                 handleNodeUpdate(id, { image: res });
 
+            } else if (node.type === NodeType.IMAGE_3D_CAMERA) {
+                // 3D 运镜节点：使用相机参数重绘图片视角
+                const inputImages: string[] = [];
+                inputs.forEach(n => { if (n?.data.image) inputImages.push(n.data.image); });
+                const inputImage = node.data.image || inputImages[0];
+
+                if (!inputImage) {
+                    throw new Error('请连接或上传图片');
+                }
+
+                // 获取相机参数和画面比例
+                const cameraParams = node.data.cameraParams || { azimuth: 0, elevation: 0, distance: 1.0 };
+                const aspectRatio = node.data.aspectRatio || '1:1';
+                const usedModel = node.data.model || 'nano-banana';
+
+                // 生成视角描述提示词
+                // generateFullPrompt: 完整提示词，用于AI调用和UI显示
+                const { generateFullPrompt } = await import('@/services/camera3d');
+                const cameraPrompt = generateFullPrompt(cameraParams);
+
+                // 计算结果节点尺寸（根据画面比例）
+                const nodeWidth = 420;
+                const [rw, rh] = aspectRatio.split(':').map(Number);
+                const nodeHeight = (nodeWidth * rh) / rw;
+                const newNodeId = `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+                // 查找不重叠的位置
+                const startX = node.x + (node.width || 420) + 80;
+                const { x: newX, y: newY } = findNonOverlappingPosition(startX, node.y, nodeWidth, nodeHeight, nodesRef.current, 'right');
+
+                // 创建加载中的结果节点（复用图片生成节点样式）
+                const newNode: AppNode = {
+                    id: newNodeId,
+                    type: NodeType.IMAGE_GENERATOR,
+                    x: newX,
+                    y: newY,
+                    width: nodeWidth,
+                    height: nodeHeight,
+                    title: '运镜结果',
+                    status: NodeStatus.WORKING,
+                    data: {
+                        prompt: cameraPrompt, // 显示完整的AI提示词
+                        model: usedModel,
+                        aspectRatio: aspectRatio,
+                    },
+                    inputs: [id],
+                };
+
+                setNodes(prev => [...prev, newNode]);
+                setConnections(prev => [...prev, { from: id, to: newNodeId }]);
+
+                // 3D 运镜节点立即恢复空闲状态，保持可操作
+                setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.IDLE } : n));
+
+                // 异步执行图像生成
+                (async () => {
+                    try {
+                        const res = await editImageWithText(inputImage, cameraPrompt, usedModel, aspectRatio);
+
+                        // 更新结果节点（保持 IMAGE_GENERATOR 类型以显示悬停提示词）
+                        setNodes(prev => prev.map(n => n.id === newNodeId ? {
+                            ...n,
+                            status: NodeStatus.SUCCESS,
+                            data: {
+                                ...n.data,
+                                image: res,
+                                images: [res],
+                            }
+                        } : n));
+                    } catch (error: any) {
+                        // 更新结果节点为错误状态
+                        setNodes(prev => prev.map(n => n.id === newNodeId ? {
+                            ...n,
+                            status: NodeStatus.ERROR,
+                            data: { ...n.data, error: error.message || '生成失败' }
+                        } : n));
+                    }
+                })();
+
+                // 直接返回，不执行后续的状态更新逻辑
+                return;
+
             } else if (node.type === NodeType.MULTI_FRAME_VIDEO) {
                 // 智能多帧视频生成
                 const frames = node.data.multiFrameData?.frames || [];
@@ -2636,6 +2721,43 @@ export default function StudioTab() {
         setSubjectEditorInitialImage(imageSrc);
         setIsSubjectEditorOpen(true);
     }, []);
+
+    // 从图片创建3D运镜节点
+    const handleCreate3DCameraFromImage = useCallback((imageSrc: string, sourceNodeId: string) => {
+        const sourceNode = nodes.find(n => n.id === sourceNodeId);
+        if (!sourceNode) return;
+
+        saveHistory();
+        const nodeWidth = 420;
+        const nodeHeight = 380; // 3D 运镜节点固定高度
+
+        // 新节点放在源节点右侧
+        const gap = 60;
+        const newX = sourceNode.x + (sourceNode.width || 420) + gap;
+        const newY = sourceNode.y;
+
+        const newNodeId = `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const savedConfig = loadNodeConfig(NodeType.IMAGE_3D_CAMERA);
+
+        const newNode: AppNode = {
+            id: newNodeId,
+            type: NodeType.IMAGE_3D_CAMERA,
+            x: newX,
+            y: newY,
+            width: nodeWidth,
+            height: nodeHeight,
+            title: '3D 运镜',
+            status: NodeStatus.IDLE,
+            data: {
+                model: savedConfig.model || 'nano-banana',
+                aspectRatio: savedConfig.aspectRatio || '16:9',
+            },
+            inputs: [sourceNodeId]
+        };
+
+        setNodes(prev => [...prev, newNode]);
+        setConnections(prev => [...prev, { from: sourceNodeId, to: newNodeId }]);
+    }, [nodes, saveHistory]);
 
     const handleEditSubject = useCallback((id: string) => {
         const subject = subjects.find(s => s.id === id);
@@ -3475,6 +3597,7 @@ export default function StudioTab() {
                             subjects={subjects}
                             onOpenSubjectLibrary={() => setExternalOpenPanel('subjects')}
                             onCreateSubject={handleCreateSubjectFromImage}
+                            on3DCamera={handleCreate3DCameraFromImage}
                             isDragging={draggingNodeId === node.id} isResizing={resizingNodeId === node.id} isConnecting={!!connectionStart} isGroupDragging={activeGroupNodeIds.includes(node.id)}
                         />
                     ))}
@@ -3646,6 +3769,7 @@ export default function StudioTab() {
                                     { type: NodeType.IMAGE_GENERATOR, label: '编辑图片', icon: ImageIcon, color: 'text-blue-500' },
                                     { type: NodeType.VIDEO_GENERATOR, label: '生成视频', icon: Film, color: 'text-purple-500' },
                                     { type: NodeType.MULTI_FRAME_VIDEO, label: '智能多帧', icon: Scan, color: 'text-teal-500' },
+                                    { type: NodeType.IMAGE_3D_CAMERA, label: '3D 运镜', icon: Camera, color: 'text-purple-400' },
                                 ];
                             } else if (hasVideo) {
                                 availableTypes = [
@@ -3686,6 +3810,7 @@ export default function StudioTab() {
                                         [NodeType.VIDEO_FACTORY]: '视频工厂',
                                         [NodeType.AUDIO_GENERATOR]: '音频生成',
                                         [NodeType.MULTI_FRAME_VIDEO]: '智能多帧',
+                                        [NodeType.IMAGE_3D_CAMERA]: '3D 运镜',
                                     };
                                     return typeMap[nodeType] || '新节点';
                                 };
@@ -3700,6 +3825,7 @@ export default function StudioTab() {
                                     if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
                                     if (nodeType === NodeType.VIDEO_GENERATOR) return 'veo3.1';
                                     if (nodeType === NodeType.VIDEO_FACTORY) return 'veo3.1';
+                                    if (nodeType === NodeType.IMAGE_3D_CAMERA) return 'nano-banana';
                                     return undefined;
                                 };
 
