@@ -1,6 +1,6 @@
 // Shared components and utilities for studio nodes
 
-export { SecureVideo, globalVideoBlobCache, isVolcengineUrl, getProxiedUrl, safePlay, safePause } from './SecureVideo';
+export { SecureVideo, globalVideoBlobCache, isVolcengineUrl, needsProxy, getProxiedUrl, safePlay, safePause } from './SecureVideo';
 export type { SecureVideoProps } from './SecureVideo';
 
 export { InputThumbnails } from './InputThumbnails';

@@ -68,17 +68,6 @@ export const pollUntilComplete = async <T>(options: PollOptions<T>): Promise<T> 
   throw new Error('操作超时');
 };
 
-// 检查 API 配置
-export const checkApiConfig = (): { isValid: boolean; message: string } => {
-  const { apiKey } = getApiConfig();
-
-  if (!apiKey) {
-    return { isValid: false, message: 'API Key未配置' };
-  }
-
-  return { isValid: true, message: 'API配置有效' };
-};
-
 // 通用图片生成结果类型
 export interface ImageGenerationResult {
   urls: string[];
@@ -90,3 +79,53 @@ export interface VideoGenerationResult {
   url: string;
   taskId?: string;
 }
+
+// ==================== 媒体工具函数 ====================
+
+/**
+ * URL 转 Base64
+ */
+export const urlToBase64 = async (url: string): Promise<string> => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("Failed to convert URL to Base64", e);
+    return "";
+  }
+};
+
+/**
+ * 从视频提取最后一帧
+ */
+export const extractLastFrame = (videoSrc: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.crossOrigin = "anonymous";
+    video.src = videoSrc;
+    video.muted = true;
+    video.onloadedmetadata = () => { video.currentTime = Math.max(0, video.duration - 0.1); };
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/png'));
+        } else {
+          reject(new Error("Canvas context failed"));
+        }
+      } catch (e) { reject(e); } finally { video.remove(); }
+    };
+    video.onerror = () => { reject(new Error("Video load failed")); video.remove(); };
+  });
+};
+

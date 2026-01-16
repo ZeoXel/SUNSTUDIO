@@ -1,10 +1,11 @@
 "use client";
 
-import { AppNode, NodeStatus, NodeType, AudioGenerationMode } from '@/types';
-import { Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, Wand2, Scaling, FileSearch, Edit, Loader2, X, Upload, Film, ChevronDown, ChevronUp, Copy, Monitor, Music, Pause, Mic2, Grid3X3, Check, Clock, ArrowRight, Settings2, Speech } from 'lucide-react';
+import { AppNode, NodeStatus, NodeType, AudioGenerationMode, Subject, SelectedSubject, CameraParams } from '@/types';
+import { Play, Image as ImageIcon, Video as VideoIcon, Type, AlertCircle, CheckCircle, Plus, Maximize2, Download, Wand2, Scaling, FileSearch, Edit, Loader2, X, Upload, Film, ChevronDown, ChevronUp, Copy, Monitor, Music, Pause, Mic2, Grid3X3, Check, Clock, ArrowRight, Settings2, Speech, User, Camera } from 'lucide-react';
 import { AudioNodePanel } from './AudioNodePanel';
 import { ConfigExpandButton, CollapsibleContent } from './shared/ConfigExpandSection';
 import { VideoConfigPanel, ViduConfig, VeoConfig, SeedanceConfig, ViduGenerationMode } from './shared/VideoConfigPanel';
+import { SubjectPicker, SubjectHighlighter, SubjectMention } from './subject';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
 
 // Import shared components and utilities
@@ -39,6 +40,9 @@ import { getProviderByModelId } from '@/config/models';
 
 // Re-export for backward compatibility
 export { globalVideoBlobCache } from './shared';
+
+// 动态导入 Camera3DVisualizer（避免 SSR 问题）- 放在组件外部避免重复创建
+const Camera3DVisualizer = React.lazy(() => import('./Camera3DVisualizer'));
 
 /**
  * 带悬停提示的图标组件
@@ -87,6 +91,10 @@ interface NodeProps {
     inputAssets?: InputAsset[];
     onInputReorder?: (nodeId: string, newOrder: string[]) => void;
     nodeRef?: (el: HTMLDivElement | null) => void; // 用于父组件直接操作 DOM
+    subjects?: Subject[]; // 主体库
+    onOpenSubjectLibrary?: () => void; // 打开主体库面板
+    onCreateSubject?: (imageSrc: string) => void; // 从图片创建主体
+    on3DCamera?: (imageSrc: string, nodeId: string) => void; // 从图片创建3D运镜节点
 
     isDragging?: boolean;
     isGroupDragging?: boolean;
@@ -117,7 +125,7 @@ const arePropsEqual = (prev: NodeProps, next: NodeProps) => {
 };
 
 const NodeComponent: React.FC<NodeProps> = ({
-    node, onUpdate, onAction, onDelete, onExpand, onEdit, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, onBatchUpload, inputAssets, onInputReorder, nodeRef, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
+    node, onUpdate, onAction, onDelete, onExpand, onEdit, onCrop, onNodeMouseDown, onPortMouseDown, onPortMouseUp, onOutputPortAction, onInputPortAction, onNodeContextMenu, onMediaContextMenu, onResizeMouseDown, onDragResultToCanvas, onGridDragStateChange, onBatchUpload, inputAssets, onInputReorder, nodeRef, subjects, onOpenSubjectLibrary, onCreateSubject, on3DCamera, isDragging, isGroupDragging, isSelected, isResizing, isConnecting, zoom = 1
 }) => {
     const inverseScale = 1 / Math.max(0.1, zoom);
     // 检测深色模式
@@ -146,6 +154,7 @@ const NodeComponent: React.FC<NodeProps> = ({
     const [isVideoConfigExpanded, setIsVideoConfigExpanded] = useState(false); // 视频扩展配置展开状态
     const generationMode = node.data.generationMode || 'CONTINUE';
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
     const [localPrompt, setLocalPrompt] = useState(node.data.prompt || '');
     const [inputHeight, setInputHeight] = useState(80);
     const isResizingInput = useRef(false);
@@ -412,6 +421,7 @@ const NodeComponent: React.FC<NodeProps> = ({
             case NodeType.VOICE_GENERATOR: return { icon: Speech, color: 'text-red-400', border: 'border-red-500/30' };
             case NodeType.IMAGE_EDITOR: return { icon: Edit, color: 'text-blue-400', border: 'border-blue-500/30' };
             case NodeType.MULTI_FRAME_VIDEO: return { icon: Film, color: 'text-emerald-400', border: 'border-emerald-500/30' };
+            case NodeType.IMAGE_3D_CAMERA: return { icon: Camera, color: 'text-purple-400', border: 'border-purple-500/30' };
             default: return { icon: Type, color: 'text-slate-600', border: 'border-slate-300' };
         }
     };
@@ -421,6 +431,9 @@ const NodeComponent: React.FC<NodeProps> = ({
         if (node.height) return node.height;
         if (node.type === NodeType.IMAGE_EDITOR) return DEFAULT_FIXED_HEIGHT;
         if (node.type === NodeType.AUDIO_GENERATOR || node.type === NodeType.VOICE_GENERATOR) return AUDIO_NODE_HEIGHT;
+        // 3D 运镜节点：固定高度以容纳 3D 场景和参数滑块
+        // 高度包含: TopBar(32px) + 3D场景(~200px) + 参数滑块(~100px) + 圆角边距
+        if (node.type === NodeType.IMAGE_3D_CAMERA) return 380;
         // 多帧视频节点：使用 16:9 比例（配置面板在底部悬浮）
         if (node.type === NodeType.MULTI_FRAME_VIDEO) {
             return Math.round((node.width || DEFAULT_NODE_WIDTH) * 9 / 16);
@@ -448,6 +461,8 @@ const NodeComponent: React.FC<NodeProps> = ({
                         <div className="flex items-center gap-1">
                             <button onClick={handleDownload} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:border-white/30 dark:hover:border-slate-500/30 transition-colors" title="下载"><Download size={14} /></button>
                             {node.data.image && onEdit && <button onClick={handleEdit} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:border-white/30 dark:hover:border-slate-500/30 transition-colors" title="编辑涂鸦"><Edit size={14} /></button>}
+                            {node.data.image && onCreateSubject && <button onClick={() => onCreateSubject(node.data.image!)} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-blue-500 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-500/30 transition-colors" title="创建主体"><User size={14} /></button>}
+                            {node.data.image && on3DCamera && node.type !== NodeType.IMAGE_3D_CAMERA && <button onClick={() => on3DCamera(node.data.image!, node.id)} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-purple-500 dark:hover:text-purple-400 hover:border-purple-300 dark:hover:border-purple-500/30 transition-colors" title="3D 运镜"><Camera size={14} /></button>}
                             {node.type !== NodeType.AUDIO_GENERATOR && node.type !== NodeType.VOICE_GENERATOR && <button onClick={handleExpand} className="p-1.5 bg-white/70 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-600 backdrop-blur-md rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:border-white/30 dark:hover:border-slate-500/30 transition-colors" title="全屏预览"><Maximize2 size={14} /></button>}
                         </div>
                     )}
@@ -477,8 +492,17 @@ const NodeComponent: React.FC<NodeProps> = ({
                 <div className="w-full h-full p-3 flex flex-col gap-2 group/text bg-white dark:bg-slate-800">
                     {/* 文本编辑区 - 黄色主题 */}
                     <div className="flex-1 bg-amber-50/50 dark:bg-amber-900/10 rounded-[16px] border border-amber-200/50 dark:border-amber-700/30 relative overflow-hidden hover:border-amber-300 dark:hover:border-amber-600 focus-within:border-amber-400 dark:focus-within:border-amber-500 transition-colors">
+                        {/* @主体 高亮层 */}
+                        {subjects && subjects.length > 0 && (
+                            <SubjectHighlighter
+                                text={localPrompt}
+                                subjects={subjects}
+                                className="absolute inset-0 p-3 text-xs font-medium leading-relaxed overflow-hidden"
+                            />
+                        )}
                         <textarea
-                            className="w-full h-full bg-transparent resize-none focus:outline-none text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400/60 dark:placeholder-slate-500/60 p-3 font-medium leading-relaxed custom-scrollbar"
+                            ref={promptTextareaRef}
+                            className="w-full h-full bg-transparent resize-none focus:outline-none text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400/60 dark:placeholder-slate-500/60 p-3 font-medium leading-relaxed custom-scrollbar relative z-10"
                             placeholder={hasUpstreamMedia
                                 ? "分析/优化结果将在此显示...\n\n可手动编辑或通过下方配置框触发 AI 处理。"
                                 : "在此输入或编辑您的提示词...\n\n可手动编辑，或通过下方配置框让 AI 优化。"}
@@ -495,6 +519,15 @@ const NodeComponent: React.FC<NodeProps> = ({
                             onWheel={(e) => e.stopPropagation()}
                             onMouseDown={e => e.stopPropagation()}
                         />
+                        {/* @ 主体提及弹窗 */}
+                        {subjects && subjects.length > 0 && (
+                            <SubjectMention
+                                subjects={subjects}
+                                textareaRef={promptTextareaRef}
+                                value={localPrompt}
+                                onChange={setLocalPrompt}
+                            />
+                        )}
                         {/* 右上角复制按钮 */}
                         {hasContent && (
                             <button
@@ -529,6 +562,116 @@ const NodeComponent: React.FC<NodeProps> = ({
                             </div>
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        // 3D 运镜节点：3D 场景可视化 + 参数控制
+        if (node.type === NodeType.IMAGE_3D_CAMERA) {
+            // 获取输入图片（从上游节点或直接数据）
+            const inputImage = inputAssets?.[0]?.src || node.data.image || null;
+
+            // 相机参数（使用默认值或已保存的值）
+            const cameraParams: CameraParams = node.data.cameraParams || {
+                azimuth: 0,
+                elevation: 0,
+                distance: 1.0
+            };
+
+            // 使用顶层导入的 Camera3DVisualizer
+
+            return (
+                <div className="w-full h-full flex flex-col relative overflow-hidden bg-slate-100 dark:bg-slate-900">
+                    {/* 3D 场景区域 */}
+                    <div className="flex-1 min-h-0 relative">
+                        <React.Suspense fallback={
+                            <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-slate-900">
+                                <Loader2 className="animate-spin text-purple-500 dark:text-purple-400" size={24} />
+                            </div>
+                        }>
+                            <Camera3DVisualizer
+                                params={cameraParams}
+                                imageUrl={inputImage}
+                                onParamsChange={(newParams) => {
+                                    onUpdate(node.id, {
+                                        cameraParams: { ...cameraParams, ...newParams }
+                                    });
+                                }}
+                            />
+                        </React.Suspense>
+
+                        {/* 加载状态 */}
+                        {isWorking && (
+                            <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                                <Loader2 className="animate-spin text-purple-500 dark:text-purple-400" size={28} />
+                                <span className="mt-2 text-xs font-medium text-purple-600 dark:text-purple-300">重绘视角中...</span>
+                            </div>
+                        )}
+
+                        {/* 错误状态 */}
+                        {node.status === NodeStatus.ERROR && (
+                            <div className="absolute inset-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center z-20">
+                                <AlertCircle className="text-red-500 mb-2" size={24} />
+                                <span className="text-[10px] text-red-500 dark:text-red-400 leading-relaxed">{node.data.error}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 底部控制面板 */}
+                    <div className="flex-shrink-0 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700/50 p-3 space-y-2">
+                        {/* 参数滑块 */}
+                        <div className="space-y-1.5">
+                            {/* 方位角 */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 w-8">方位</span>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="360"
+                                    value={cameraParams.azimuth}
+                                    onChange={(e) => onUpdate(node.id, {
+                                        cameraParams: { ...cameraParams, azimuth: parseInt(e.target.value) }
+                                    })}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    className="flex-1 h-1 bg-slate-300 dark:bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 dark:[&::-webkit-slider-thumb]:bg-purple-400"
+                                />
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 w-8 text-right">{cameraParams.azimuth}°</span>
+                            </div>
+                            {/* 俯仰角 */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 w-8">俯仰</span>
+                                <input
+                                    type="range"
+                                    min="-30"
+                                    max="60"
+                                    value={cameraParams.elevation}
+                                    onChange={(e) => onUpdate(node.id, {
+                                        cameraParams: { ...cameraParams, elevation: parseInt(e.target.value) }
+                                    })}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    className="flex-1 h-1 bg-slate-300 dark:bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 dark:[&::-webkit-slider-thumb]:bg-purple-400"
+                                />
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 w-8 text-right">{cameraParams.elevation}°</span>
+                            </div>
+                            {/* 焦距 */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 w-8">焦距</span>
+                                <input
+                                    type="range"
+                                    min="0.6"
+                                    max="1.5"
+                                    step="0.05"
+                                    value={cameraParams.distance}
+                                    onChange={(e) => onUpdate(node.id, {
+                                        cameraParams: { ...cameraParams, distance: parseFloat(e.target.value) }
+                                    })}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    className="flex-1 h-1 bg-slate-300 dark:bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 dark:[&::-webkit-slider-thumb]:bg-purple-400"
+                                />
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 w-8 text-right">{cameraParams.distance.toFixed(1)}x</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             );
         }
@@ -1031,6 +1174,78 @@ const NodeComponent: React.FC<NodeProps> = ({
         if (node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET) return null;
 
         const isOpen = (isHovered || isInputFocused);
+
+        // 3D 运镜节点：模型选择器 + 画面比例 + 生成按钮
+        if (node.type === NodeType.IMAGE_3D_CAMERA) {
+            const camera3dModels = [
+                { l: 'Nano Banana', v: 'nano-banana' },
+                { l: 'Nano Pro', v: 'nano-banana-pro' },
+                { l: 'Seedream', v: 'doubao-seedream-4-5-251128' },
+            ];
+            const currentModel = node.data.model || 'nano-banana';
+            const currentModelLabel = camera3dModels.find(m => m.v === currentModel)?.l || 'Nano Banana';
+            const aspectRatios = IMAGE_ASPECT_RATIOS;
+            const currentRatio = node.data.aspectRatio || '1:1';
+            const hasInputImage = !!(inputAssets?.[0]?.src || node.data.image);
+
+            return (
+                <div data-config-panel className={`absolute top-full left-1/2 w-[98%] z-50 flex flex-col items-center justify-start transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isOpen ? `opacity-100 translate-y-0 scale-100` : 'opacity-0 translate-y-[-10px] scale-95 pointer-events-none'}`}
+                    style={{
+                        paddingTop: `${8 * inverseScale}px`,
+                        transform: `translateX(-50%) scale(${inverseScale})`,
+                        transformOrigin: 'top center'
+                    }}
+                >
+                    <div className={`w-full rounded-[20px] p-1 flex flex-col gap-1 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-2 py-1.5">
+                            <div className="flex items-center gap-2">
+                                {/* 模型选择器 */}
+                                <div className="relative group/model">
+                                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-purple-400 dark:hover:text-purple-300">
+                                        <span>{currentModelLabel}</span>
+                                        <ChevronDown size={10} />
+                                    </div>
+                                    <div className="absolute bottom-full left-0 pb-2 w-36 opacity-0 translate-y-2 pointer-events-none group-hover/model:opacity-100 group-hover/model:translate-y-0 group-hover/model:pointer-events-auto transition-all duration-200 z-[200]">
+                                        <div className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                                            {camera3dModels.map(m => (
+                                                <div key={m.v} onClick={() => onUpdate(node.id, { model: m.v })} className={`px-3 py-2 text-[10px] font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 ${node.data.model === m.v ? 'text-purple-400 dark:text-purple-300 bg-slate-50 dark:bg-slate-700' : 'text-slate-600 dark:text-slate-300'}`}>
+                                                    <span>{m.l}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* 画面比例选择器 */}
+                                <div className="relative group/ratio">
+                                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-purple-400 dark:hover:text-purple-300">
+                                        <Scaling size={12} /><span>{currentRatio}</span>
+                                    </div>
+                                    <div className="absolute bottom-full left-0 pb-2 w-20 opacity-0 translate-y-2 pointer-events-none group-hover/ratio:opacity-100 group-hover/ratio:translate-y-0 group-hover/ratio:pointer-events-auto transition-all duration-200 z-[200]">
+                                        <div className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                                            {aspectRatios.map(r => (
+                                                <div key={r} onClick={() => onUpdate(node.id, { aspectRatio: r })} className={`px-3 py-2 text-[10px] font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 ${node.data.aspectRatio === r ? 'text-purple-400 dark:text-purple-300 bg-slate-50 dark:bg-slate-700' : 'text-slate-600 dark:text-slate-300'}`}>{r}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* 生成按钮 */}
+                            <button
+                                onClick={handleActionClick}
+                                disabled={isWorking || !hasInputImage}
+                                className={`relative flex items-center justify-center gap-2 min-w-[60px] px-4 py-1.5 rounded-[12px] font-bold text-[10px] tracking-wide transition-all duration-300 ${
+                                    isWorking || !hasInputImage
+                                        ? 'bg-slate-50 dark:bg-slate-700 text-slate-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg hover:shadow-purple-500/20 hover:scale-105 active:scale-95'
+                                }`}
+                            >
+                                {isWorking ? <Loader2 className="animate-spin" size={12} /> : <><Wand2 size={12} /><span>重绘</span></>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
 
         // 提示词节点：专用配置框
         if (node.type === NodeType.PROMPT_INPUT) {
@@ -1543,11 +1758,43 @@ const NodeComponent: React.FC<NodeProps> = ({
             >
                 {/* Glass Panel: Set strict Z-Index to higher layer to overlap thumbnails */}
                 <div className={`w-full rounded-[20px] p-1 flex flex-col gap-1 ${GLASS_PANEL} relative z-[100]`} onMouseDown={e => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                    <div className="relative group/input bg-white dark:bg-slate-800 rounded-[16px] flex flex-col overflow-hidden">
+                    <div className="relative group/input bg-white dark:bg-slate-800 rounded-[16px] flex flex-col">
                         {/* InputThumbnails: CUT/CONTINUE显示croppedFrame，其他模式显示上游输入 */}
                         {showThumbnails && (<div className="w-full px-1 pt-1 z-10"><InputThumbnails assets={thumbnailAssets} onReorder={isCutOrContinueMode ? () => { } : (newOrder) => onInputReorder?.(node.id, newOrder)} /></div>)}
-                        <textarea className="w-full bg-transparent text-xs text-slate-700 dark:text-slate-200 placeholder-slate-500/60 dark:placeholder-slate-400/60 p-3 focus:outline-none resize-none custom-scrollbar font-medium leading-relaxed" style={{ height: `${Math.min(inputHeight, 200)}px` }} placeholder="描述您的修改或生成需求..." value={localPrompt} onChange={(e) => setLocalPrompt(e.target.value)} onBlur={() => { setIsInputFocused(false); commitPrompt(); }} onKeyDown={handleCmdEnter} onFocus={() => setIsInputFocused(true)} onMouseDown={e => e.stopPropagation()} readOnly={isWorking} />
-                        <div className="absolute bottom-0 left-0 w-full h-3 cursor-row-resize flex items-center justify-center opacity-0 group-hover/input:opacity-100 transition-opacity" onMouseDown={handleInputResizeStart}><div className="w-8 h-1 rounded-full bg-slate-100 dark:bg-slate-700 group-hover/input:bg-slate-200 dark:group-hover/input:bg-slate-600" /></div>
+                        {/* @主体 高亮层 + textarea */}
+                        <div className="relative" style={{ height: `${Math.min(inputHeight, 200)}px` }}>
+                            {subjects && subjects.length > 0 && (
+                                <SubjectHighlighter
+                                    text={localPrompt}
+                                    subjects={subjects}
+                                    model={node.data.model}
+                                    className="absolute inset-0 p-3 text-xs font-medium leading-relaxed overflow-hidden"
+                                />
+                            )}
+                            <textarea
+                                ref={promptTextareaRef}
+                                className="w-full h-full bg-transparent text-xs text-slate-700 dark:text-slate-200 placeholder-slate-500/60 dark:placeholder-slate-400/60 p-3 focus:outline-none resize-none custom-scrollbar font-medium leading-relaxed relative z-10"
+                                placeholder="描述您的修改或生成需求..."
+                                value={localPrompt}
+                                onChange={(e) => setLocalPrompt(e.target.value)}
+                                onBlur={() => { setIsInputFocused(false); commitPrompt(); }}
+                                onKeyDown={handleCmdEnter}
+                                onFocus={() => setIsInputFocused(true)}
+                                onMouseDown={e => e.stopPropagation()}
+                                readOnly={isWorking}
+                            />
+                            {/* resize handle */}
+                            <div className="absolute bottom-0 left-0 w-full h-3 cursor-row-resize flex items-center justify-center opacity-0 group-hover/input:opacity-100 transition-opacity z-20" onMouseDown={handleInputResizeStart}><div className="w-8 h-1 rounded-full bg-slate-100 dark:bg-slate-700 group-hover/input:bg-slate-200 dark:group-hover/input:bg-slate-600" /></div>
+                        </div>
+                        {/* @ 主体提及弹窗 - 放在外层避免被裁剪 */}
+                        {subjects && subjects.length > 0 && (
+                            <SubjectMention
+                                subjects={subjects}
+                                textareaRef={promptTextareaRef}
+                                value={localPrompt}
+                                onChange={setLocalPrompt}
+                            />
+                        )}
                     </div>
                     {/* 视频扩展配置面板 - 仅视频节点且有支持的厂商时显示 */}
                     {(node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) && currentProvider?.id && ['vidu', 'seedance', 'veo'].includes(currentProvider.id) && (
@@ -1575,6 +1822,20 @@ const NodeComponent: React.FC<NodeProps> = ({
                                                 : 'text2video'
                                     }
                                 />
+                                {/* 主体选择器 - 仅 Vidu 支持 */}
+                                {currentProvider.id === 'vidu' && subjects && subjects.length > 0 && (
+                                    <div className="mt-2">
+                                        <SubjectPicker
+                                            subjects={subjects}
+                                            selected={node.data.selectedSubjects || []}
+                                            onChange={(selected) => onUpdate(node.id, {
+                                                selectedSubjects: selected,
+                                                generationMode: selected.length > 0 ? 'SUBJECT_REF' : node.data.generationMode
+                                            })}
+                                            onOpenLibrary={onOpenSubjectLibrary}
+                                        />
+                                    </div>
+                                )}
                             </CollapsibleContent>
                         </div>
                     )}
@@ -1761,6 +2022,10 @@ const NodeComponent: React.FC<NodeProps> = ({
         if (node.type === NodeType.MULTI_FRAME_VIDEO) {
             return 'ring-emerald-400/80';
         }
+        // 3D 运镜节点 - 紫色
+        if (node.type === NodeType.IMAGE_3D_CAMERA) {
+            return 'ring-purple-400/80';
+        }
         // 默认
         return 'ring-slate-300/80';
     };
@@ -1806,11 +2071,12 @@ const NodeComponent: React.FC<NodeProps> = ({
                     const isAssetNode = node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET;
                     if (isAssetNode) return null;
 
-                    // 生成节点（图像/视频/多帧视频）支持左连接点交互创建上游节点
+                    // 生成节点（图像/视频/多帧视频/3D运镜）支持左连接点交互创建上游节点
                     const isGeneratorNode = node.type === NodeType.IMAGE_GENERATOR ||
                         node.type === NodeType.VIDEO_GENERATOR ||
                         node.type === NodeType.VIDEO_FACTORY ||
-                        node.type === NodeType.MULTI_FRAME_VIDEO;
+                        node.type === NodeType.MULTI_FRAME_VIDEO ||
+                        node.type === NodeType.IMAGE_3D_CAMERA;
 
                     // 提示词节点也支持左连接点（连接图片/视频进行分析）
                     const isPromptNode = node.type === NodeType.PROMPT_INPUT;

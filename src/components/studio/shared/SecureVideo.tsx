@@ -20,9 +20,22 @@ export const isVolcengineUrl = (url: string): boolean => {
     }
 };
 
-// Helper: Get proxied URL for Volcengine
+// Helper: Check if URL needs proxy (includes Aliyun OSS for Seedream)
+export const needsProxy = (url: string): boolean => {
+    if (!url || !url.startsWith('http')) return false;
+    try {
+        const urlObj = new URL(url);
+        const hostname = urlObj.hostname;
+        return isVolcengineUrl(url) ||
+               hostname.includes('aliyuncs.com'); // Aliyun OSS (Seedream)
+    } catch {
+        return false;
+    }
+};
+
+// Helper: Get proxied URL for external resources
 export const getProxiedUrl = (url: string): string => {
-    if (isVolcengineUrl(url)) {
+    if (needsProxy(url)) {
         return `/api/studio/proxy?url=${encodeURIComponent(url)}`;
     }
     return url;

@@ -6,8 +6,10 @@ import {
     ImageIcon, Video as VideoIcon, Film,
     Edit, Trash2, Brush, Type,
     Clapperboard, Layers, Sun, Moon,
-    Music, Speech
+    Music, Speech, Library, Camera
 } from 'lucide-react';
+import type { Subject } from '@/types';
+import { SubjectLibraryPanel } from './subject';
 import { NodeType, Canvas } from '@/types';
 
 interface SidebarDockProps {
@@ -31,6 +33,16 @@ interface SidebarDockProps {
     // Theme
     theme: 'light' | 'dark';
     onSetTheme: (theme: 'light' | 'dark') => void;
+
+    // Subject Library
+    subjects?: Subject[];
+    onAddSubject?: () => void;
+    onEditSubject?: (id: string) => void;
+    onDeleteSubject?: (id: string) => void;
+
+    // External panel control
+    externalOpenPanel?: 'subjects' | null;
+    onExternalPanelHandled?: () => void;
 }
 
 // Helper Helpers
@@ -46,6 +58,7 @@ const getNodeNameCN = (t: string) => {
         case NodeType.VOICE_GENERATOR: return '语音合成';
         case NodeType.IMAGE_EDITOR: return '图像编辑';
         case NodeType.MULTI_FRAME_VIDEO: return '智能多帧';
+        case NodeType.IMAGE_3D_CAMERA: return '3D 运镜';
         default: return t;
     }
 };
@@ -62,6 +75,7 @@ const getNodeIcon = (t: string) => {
         case NodeType.VOICE_GENERATOR: return Speech;
         case NodeType.IMAGE_EDITOR: return Brush;
         case NodeType.MULTI_FRAME_VIDEO: return Layers;
+        case NodeType.IMAGE_3D_CAMERA: return Camera;
         default: return Plus;
     }
 };
@@ -83,6 +97,7 @@ const getNodeColor = (type: string) => {
         case NodeType.VOICE_GENERATOR: return '#fb7185'; // rose (MiniMax 语音)
         case NodeType.IMAGE_EDITOR: return '#facc15'; // yellow
         case NodeType.MULTI_FRAME_VIDEO: return '#10b981'; // emerald (智能多帧-绿色)
+        case NodeType.IMAGE_3D_CAMERA: return '#a855f7'; // purple (3D 运镜-紫色)
         default: return '#cbd5e1';
     }
 };
@@ -248,9 +263,26 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
     onDeleteCanvas,
     onRenameCanvas,
     theme,
-    onSetTheme
+    onSetTheme,
+    // Subject Library
+    subjects = [],
+    onAddSubject,
+    onEditSubject,
+    onDeleteSubject,
+    // External panel control
+    externalOpenPanel,
+    onExternalPanelHandled,
 }) => {
-    const [activePanel, setActivePanel] = useState<'history' | 'add' | 'canvas' | null>(null);
+    const [activePanel, setActivePanel] = useState<'history' | 'add' | 'canvas' | 'subjects' | null>(null);
+
+    // Handle external panel opening
+    useEffect(() => {
+        if (externalOpenPanel) {
+            setActivePanel(externalOpenPanel);
+            setIsPanelVisible(true);
+            onExternalPanelHandled?.();
+        }
+    }, [externalOpenPanel, onExternalPanelHandled]);
     const [activeHistoryTab, setActiveHistoryTab] = useState<'image' | 'video'>('image');
     const [editingCanvasId, setEditingCanvasId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, id: string, type: 'history' | 'canvas' } | null>(null);
@@ -260,7 +292,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
 
     // Hover Handlers - 优化动效：使用两阶段动画
     const handleSidebarHover = (id: string) => {
-        if (['add', 'history', 'workflow', 'canvas'].includes(id)) {
+        if (['history', 'workflow', 'canvas', 'subjects'].includes(id)) {
             // 清除所有定时器
             if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
             if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
@@ -318,6 +350,19 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
     }, []);
 
     const renderPanelContent = () => {
+        // 主体库面板
+        if (activePanel === 'subjects') {
+            return (
+                <SubjectLibraryPanel
+                    subjects={subjects}
+                    onAddSubject={onAddSubject || (() => {})}
+                    onEditSubject={onEditSubject || (() => {})}
+                    onDeleteSubject={onDeleteSubject || (() => {})}
+                    onClose={() => setActivePanel(null)}
+                />
+            );
+        }
+
         if (activePanel === 'history') {
             const filteredAssets = assetHistory.filter(a => {
                 if (activeHistoryTab === 'image') return a.type === 'image' || a.type.includes('image') || a.type.includes('image_generator');
@@ -463,36 +508,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
             );
         }
 
-        // Default: Add Node
-        return (
-            <>
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
-                    <button onClick={() => setActivePanel(null)}><X size={14} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100" /></button>
-                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                        添加节点
-                    </span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-                    {[NodeType.PROMPT_INPUT, NodeType.IMAGE_ASSET, NodeType.VIDEO_ASSET, NodeType.IMAGE_GENERATOR, NodeType.VIDEO_GENERATOR, NodeType.MULTI_FRAME_VIDEO, NodeType.AUDIO_GENERATOR, NodeType.VOICE_GENERATOR].map(t => {
-                        const ItemIcon = getNodeIcon(t);
-                        return (
-                            <button
-                                key={t}
-                                onClick={(e) => { e.stopPropagation(); onAddNode(t); setActivePanel(null); }}
-                                className="w-full text-left p-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-3 text-sm text-slate-700 dark:text-slate-300 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-lg"
-                            >
-                                <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-blue-500 dark:text-blue-400 shadow-inner">
-                                    <ItemIcon size={16} />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="font-medium text-xs">{getNodeNameCN(t)}</span>
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
-            </>
-        );
+        // 不再显示添加节点面板，仅保留双击画布创建入口
+        return null;
     };
 
     return (
@@ -504,8 +521,8 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                 onMouseLeave={handleSidebarLeave}
             >
                 {[
-                    { id: 'add', icon: Plus, tooltip: '添加节点' },
                     { id: 'history', icon: History, tooltip: '历史记录' },
+                    { id: 'subjects', icon: Library, tooltip: '主体库' },
                     { id: 'chat', icon: MessageSquare, action: onToggleChat, active: isChatOpen, tooltip: '对话' },
                     {
                         id: 'theme_toggle',
@@ -515,7 +532,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
                     },
                 ].map(item => {
                     const isActive = activePanel === item.id || item.active;
-                    const hasPanel = ['add', 'history', 'canvas'].includes(item.id);
+                    const hasPanel = ['history', 'canvas', 'subjects'].includes(item.id);
                     return (
                         <div key={item.id} className="relative group">
                             <button

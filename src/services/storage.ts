@@ -60,3 +60,32 @@ export const loadFromStorage = async <T>(key: string): Promise<T | undefined> =>
     };
   });
 };
+
+// ==================== 主体库存储 ====================
+import type { Subject } from '@/types';
+
+const SUBJECTS_KEY = 'studio_subjects';
+const SUBJECT_CATEGORIES_KEY = 'studio_subject_categories';
+
+// 默认分类
+const DEFAULT_CATEGORIES = ['character', 'object', 'animal', 'vehicle'];
+
+/** 保存主体列表 */
+export const saveSubjects = async (subjects: Subject[]): Promise<void> => {
+  await saveToStorage(SUBJECTS_KEY, subjects);
+};
+
+/** 加载主体列表 */
+export const loadSubjects = async (): Promise<Subject[]> => {
+  return (await loadFromStorage<Subject[]>(SUBJECTS_KEY)) || [];
+};
+
+/** 保存分类列表 */
+export const saveSubjectCategories = async (categories: string[]): Promise<void> => {
+  await saveToStorage(SUBJECT_CATEGORIES_KEY, categories);
+};
+
+/** 加载分类列表 */
+export const loadSubjectCategories = async (): Promise<string[]> => {
+  return (await loadFromStorage<string[]>(SUBJECT_CATEGORIES_KEY)) || DEFAULT_CATEGORIES;
+};

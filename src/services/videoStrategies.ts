@@ -1,6 +1,24 @@
 
-import { AppNode, VideoGenerationMode } from '@/types';
-import { extractLastFrame, urlToBase64, analyzeVideo, orchestrateVideoPrompt, generateImageFromText } from './geminiService';
+import { AppNode, VideoGenerationMode, SelectedSubject } from '@/types';
+import { extractLastFrame, urlToBase64 } from './providers/shared';
+import { generateImage } from './providers/image';
+
+// 图像生成包装函数
+const generateImageFromText = async (
+  prompt: string,
+  model: string,
+  images: string[] = [],
+  options: { aspectRatio?: string; resolution?: string; count?: number } = {}
+): Promise<string[]> => {
+  const result = await generateImage({
+    prompt,
+    model,
+    images,
+    aspectRatio: options.aspectRatio,
+    count: options.count || 1,
+  });
+  return result.urls;
+};
 
 export interface StrategyResult {
     finalPrompt: string;
@@ -9,6 +27,7 @@ export interface StrategyResult {
     referenceImages: string[] | undefined;
     imageRoles?: string[];  // 图片角色标记（用于首尾帧：['first_frame', 'last_frame']）
     generationMode: VideoGenerationMode;
+    subjects?: SelectedSubject[];  // 主体参考（用于 SUBJECT_REF 模式）
 }
 
 // --- Module: Default (Basic Image-to-Video / Text-to-Video) ---
@@ -149,13 +168,6 @@ export const processSceneDirector = async (
 
     // 1. Get Style Context from Upstream Video (if any)
     const videoInputNode = inputs.find(n => n.data.videoUri);
-    if (videoInputNode && videoInputNode.data.videoUri) {
-        try {
-            let vidData = videoInputNode.data.videoUri;
-            if (vidData.startsWith('http')) vidData = await urlToBase64(vidData);
-            upstreamContextStyle = await analyzeVideo(vidData, "Analyze the visual style, lighting, composition, and color grading briefly.", "gemini-2.5-flash");
-        } catch (e) { /* Ignore analysis failure */ }
-    }
 
     // 2. Identify the Low-Res/Cropped Input Source
     if (node.data.croppedFrame) {
@@ -241,25 +253,8 @@ export const processCharacterRef = async (
     // Fallback: If no image source, check for inputs that have image data (maybe prompts that generated images)
     const characterImage = imageSource?.data.image || inputs.find(n => n.data.image)?.data.image || null;
 
-    let motionDescription = "";
-
-    // 2. Analyze Video Motion (if available)
-    if (videoSource?.data.videoUri) {
-        try {
-            let vidData = videoSource.data.videoUri;
-            if (vidData.startsWith('http')) vidData = await urlToBase64(vidData);
-            
-            // Ask Gemini to extract purely the motion/action, ignoring the original character's identity
-            motionDescription = await analyzeVideo(
-                vidData, 
-                "Describe ONLY the physical actions, camera movement, and background environment of this video. Do not describe the person's identity. Example: 'A figure is waving their hand while walking forward in a studio.'", 
-                "gemini-2.5-flash"
-            );
-        } catch (e) {
-            console.warn("CharacterRef: Motion analysis failed", e);
-            motionDescription = "performing dynamic action"; // Fallback
-        }
-    }
+    // 动作描述（简化版，不再调用视频分析）
+    const motionDescription = videoSource?.data.videoUri ? "performing dynamic action" : "";
 
     // 3. Construct Final Prompt
     // Combine User Prompt + Motion Description + Character Reference logic is implicit via image input to Veo
@@ -277,6 +272,45 @@ export const processCharacterRef = async (
         inputImageForGeneration: characterImage, // This is the "Anchor" (The Character)
         referenceImages: undefined,
         generationMode: 'CHARACTER_REF'
+    };
+};
+
+// --- Module: SubjectRef (主体参考) ---
+// 使用全局主体库中的主体进行视频生成，保持主体一致性
+export const processSubjectRef = async (
+    node: AppNode,
+    inputs: AppNode[],
+    prompt: string
+): Promise<StrategyResult> => {
+    const selectedSubjects = node.data.selectedSubjects || [];
+
+    if (selectedSubjects.length === 0) {
+        // 没有选择主体，回退到默认模式
+        console.log('[VideoStrategy] SubjectRef: No subjects selected, falling back to DEFAULT');
+        return processDefaultVideoGen(node, inputs, prompt);
+    }
+
+    // 构建包含 @id 引用的 prompt
+    // 检查用户是否已在 prompt 中包含 @id 引用
+    let finalPrompt = prompt;
+    const existingRefs = selectedSubjects.filter(s => prompt.includes(`@${s.id}`));
+
+    if (existingRefs.length === 0) {
+        // 用户没有在 prompt 中引用任何主体，自动添加引用
+        const refs = selectedSubjects.map(s => `@${s.id}`).join(' ');
+        finalPrompt = `${refs} ${prompt}`;
+        console.log('[VideoStrategy] SubjectRef: Auto-added subject references to prompt');
+    }
+
+    console.log(`[VideoStrategy] SubjectRef: ${selectedSubjects.length} subjects, prompt: ${finalPrompt.substring(0, 100)}...`);
+
+    return {
+        finalPrompt,
+        videoInput: null,
+        inputImageForGeneration: null,
+        referenceImages: undefined,
+        subjects: selectedSubjects,
+        generationMode: 'SUBJECT_REF'
     };
 };
 
@@ -299,6 +333,8 @@ export const getGenerationStrategy = async (
     console.log(`[VideoStrategy] Mode: ${mode}, hasFirstLastFrameData: ${hasFirstLastFrameData}, hasTwoImageInputs: ${hasTwoImageInputs}`);
 
     switch (mode) {
+        case 'SUBJECT_REF':
+            return processSubjectRef(node, inputs, basePrompt);
         case 'CHARACTER_REF':
             return processCharacterRef(node, inputs, basePrompt);
         case 'FIRST_LAST_FRAME':

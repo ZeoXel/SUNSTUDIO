@@ -11,18 +11,99 @@ import { ImageCropper } from './ImageCropper';
 import { ImageEditOverlay } from './ImageEditOverlay';
 import { generateViduMultiFrame, queryViduTask, ViduMultiFrameConfig } from '@/services/viduService';
 import { SettingsModal } from './SettingsModal';
-import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, Canvas, VideoGenerationMode } from '@/types';
-import { generateImageFromText, generateVideo, analyzeImage, editImageWithText, planStoryboard, orchestrateVideoPrompt, urlToBase64, extractLastFrame, generateAudio } from '@/services/geminiService';
+import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Workflow, Canvas, VideoGenerationMode, Subject } from '@/types';
+import { SubjectEditor } from './subject';
+import { urlToBase64 } from '@/services/providers';
+import { parseSubjectReferences, cleanSubjectReferences, getPrimaryImage } from '@/services/subjectService';
+
+// ==================== API 调用层 ====================
+
+// 图像生成 (通过 API route)
+const generateImageFromText = async (
+  prompt: string,
+  model: string,
+  images: string[] = [],
+  options: { aspectRatio?: string; resolution?: string; count?: number } = {}
+): Promise<string[]> => {
+  const response = await fetch('/api/studio/image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      model,
+      images,
+      aspectRatio: options.aspectRatio,
+      n: options.count || 1,
+    }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `图像生成失败: ${response.status}`);
+  }
+  const result = await response.json();
+  return result.images;
+};
+
+// 图像编辑 (通过 API route)
+const editImageWithText = async (imageBase64: string, prompt: string, model: string, aspectRatio?: string): Promise<string> => {
+  const results = await generateImageFromText(prompt, model, [imageBase64], { count: 1, aspectRatio });
+  return results[0];
+};
+
+// 视频生成返回类型
+interface VideoGenResult {
+  uri: string;
+  isFallbackImage?: boolean;
+  videoMetadata?: any;
+  uris?: string[];
+}
+
+// 视频生成 (统一通过 API 路由)
+const generateVideo = async (
+  prompt: string,
+  model: string,
+  options: { aspectRatio?: string; count?: number; generationMode?: any; resolution?: string; duration?: number; videoConfig?: any; viduSubjects?: { id: string; images: string[] }[] } = {},
+  inputImageBase64?: string | null,
+  _videoInput?: any,
+  referenceImages?: string[],
+  imageRoles?: string[]
+): Promise<VideoGenResult> => {
+  const response = await fetch('/api/studio/video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      model,
+      aspectRatio: options.aspectRatio || '16:9',
+      duration: options.duration,
+      images: inputImageBase64 ? [inputImageBase64] : referenceImages,
+      imageRoles,
+      videoConfig: options.videoConfig,
+      viduSubjects: options.viduSubjects, // Vidu 主体参考
+    }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `API错误: ${response.status}`);
+  }
+  const result = await response.json();
+  return {
+    uri: result.videoUrl,
+    isFallbackImage: false,
+    videoMetadata: { taskId: result.taskId },
+    uris: [result.videoUrl],
+  };
+};
 import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
 import { synthesizeSpeech, MinimaxGenerateParams } from '@/services/minimaxService';
-import { saveToStorage, loadFromStorage } from '@/services/storage';
+import { saveToStorage, loadFromStorage, saveSubjects, loadSubjects } from '@/services/storage';
 import { getMenuStructure, getDefaultModelId, type ProviderDefinition } from '@/config/models';
 import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
     MousePointerClick, LayoutTemplate, X, RefreshCw, Film, Brush, Mic2, Music, FileSearch,
     Minus, FolderHeart, Unplug, Sparkles, ChevronLeft, ChevronRight, Scan,
-    Undo2, Redo2, ChevronRightIcon, Speech
+    Undo2, Redo2, ChevronRightIcon, Speech, Camera
 } from 'lucide-react';
 
 // Apple Physics Curve
@@ -337,6 +418,13 @@ export default function StudioTab() {
     const [canvases, setCanvases] = useState<Canvas[]>([]);
     const [currentCanvasId, setCurrentCanvasId] = useState<string | null>(null);
 
+    // --- Subject Library State ---
+    const [subjects, setSubjects] = useState<Subject[]>([]);
+    const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+    const [subjectEditorInitialImage, setSubjectEditorInitialImage] = useState<string | null>(null);
+    const [isSubjectEditorOpen, setIsSubjectEditorOpen] = useState(false);
+    const [externalOpenPanel, setExternalOpenPanel] = useState<'subjects' | null>(null);
+
     // --- Canvas State ---
     // nodes, setNodes, connections, setConnections, groups, setGroups 已迁移到 useCanvasData Hook
     // history, historyIndex, historyRef, historyIndexRef 已迁移到 useCanvasHistory Hook
@@ -463,6 +551,33 @@ export default function StudioTab() {
         return { x: clientX - rect.left, y: clientY - rect.top };
     }, []);
 
+    // Helper to calculate the center of all nodes (重心)
+    const getNodesCenterPoint = useCallback(() => {
+        const currentNodes = nodesRef.current;
+        if (currentNodes.length === 0) {
+            // 如果没有节点，返回画布中心
+            const rect = canvasContainerRef.current?.getBoundingClientRect();
+            if (!rect) return { x: 0, y: 0 };
+            return { x: rect.width / 2, y: rect.height / 2 };
+        }
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        currentNodes.forEach(node => {
+            const w = node.width || 420;
+            const h = node.height || 360;
+            minX = Math.min(minX, node.x);
+            minY = Math.min(minY, node.y);
+            maxX = Math.max(maxX, node.x + w);
+            maxY = Math.max(maxY, node.y + h);
+        });
+
+        // 返回所有节点包围盒的中心点（画布坐标）
+        return {
+            x: (minX + maxX) / 2,
+            y: (minY + maxY) / 2
+        };
+    }, [nodesRef]);
+
     // nodesRef, connectionsRef, groupsRef 的同步已由 useCanvasData 内部处理
     // historyRef, historyIndexRef 的同步已由 useCanvasHistory 内部处理
 
@@ -474,6 +589,10 @@ export default function StudioTab() {
             try {
                 const sAssets = await loadFromStorage<any[]>('assets'); if (sAssets) setAssetHistory(sAssets);
                 const sWfs = await loadFromStorage<Workflow[]>('workflows'); if (sWfs) setWorkflows(sWfs);
+
+                // Load subject library
+                const sSubjects = await loadSubjects();
+                if (sSubjects.length > 0) setSubjects(sSubjects);
 
                 // Load canvases
                 const sCanvases = await loadFromStorage<Canvas[]>('canvases');
@@ -576,12 +695,19 @@ export default function StudioTab() {
         saveToStorage('groups', groups);
     }, [assetHistory, workflows, nodes, connections, groups, canvases, currentCanvasId, isLoaded]);
 
+    // Save subject library
+    useEffect(() => {
+        if (!isLoaded) return;
+        saveSubjects(subjects);
+    }, [subjects, isLoaded]);
+
 
     const getApproxNodeHeight = (node: AppNode) => {
         if (node.height) return node.height;
         const width = node.width || 420;
         if (node.type === NodeType.IMAGE_EDITOR) return 360;
         if (node.type === NodeType.AUDIO_GENERATOR) return Math.round(width * 9 / 16); // 16:9 比例
+        if (node.type === NodeType.IMAGE_3D_CAMERA) return 380; // 3D 运镜节点固定高度
         // 提示词节点和素材节点默认 16:9 比例
         const defaultRatio = (node.type === NodeType.PROMPT_INPUT || node.type === NodeType.IMAGE_ASSET || node.type === NodeType.VIDEO_ASSET) ? '16:9' : '1:1';
         const [w, h] = (node.data.aspectRatio || defaultRatio).split(':').map(Number);
@@ -701,6 +827,7 @@ export default function StudioTab() {
             case NodeType.VOICE_GENERATOR: return '语音合成';
             case NodeType.IMAGE_EDITOR: return '图像编辑';
             case NodeType.MULTI_FRAME_VIDEO: return '智能多帧';
+            case NodeType.IMAGE_3D_CAMERA: return '3D 运镜';
             default: return t;
         }
     };
@@ -716,6 +843,7 @@ export default function StudioTab() {
             case NodeType.VOICE_GENERATOR: return Speech;
             case NodeType.IMAGE_EDITOR: return Brush;
             case NodeType.MULTI_FRAME_VIDEO: return Scan;
+            case NodeType.IMAGE_3D_CAMERA: return Camera;
             default: return Plus;
         }
     };
@@ -1792,71 +1920,25 @@ export default function StudioTab() {
                 if (node.data.image && !inputImages.includes(node.data.image)) {
                     inputImages.unshift(node.data.image); // 优先放在最前面
                 }
+
+                // 解析 @主体 引用，将主体图片作为参考输入
+                console.log(`[ImageGen] Parsing subject refs - prompt: "${prompt}", subjects count: ${subjects.length}, subject names:`, subjects.map(s => s.name));
+                const subjectRefs = parseSubjectReferences(prompt, subjects);
+                console.log(`[ImageGen] parseSubjectReferences returned:`, subjectRefs.length, subjectRefs.map(s => ({ name: s.name, hasImage: !!s.primaryImage })));
+                if (subjectRefs.length > 0) {
+                    console.log(`[ImageGen] Found ${subjectRefs.length} subject references:`, subjectRefs.map(s => s.name));
+                    // 添加主体主要图片作为参考（插入到最前面）
+                    subjectRefs.forEach(ref => {
+                        if (!inputImages.includes(ref.primaryImage)) {
+                            inputImages.unshift(ref.primaryImage);
+                        }
+                    });
+                    // 清理提示词中的 @主体名称
+                    prompt = cleanSubjectReferences(prompt, subjects);
+                    console.log(`[ImageGen] Cleaned prompt: ${prompt.substring(0, 100)}...`);
+                }
                 console.log(`[ImageGen] Collected ${inputImages.length} input images for model ${node.data.model}`);
 
-                const isStoryboard = /分镜|storyboard|sequence|shots|frames|json/i.test(prompt);
-
-                if (isStoryboard) {
-                    try {
-                        const storyboard = await planStoryboard(prompt, upstreamTexts.join('\n'));
-                        if (storyboard.length > 1) {
-                            // ... (storyboard expansion logic preserved) ...
-                            const newNodes: AppNode[] = [];
-                            const newConnections: Connection[] = [];
-                            const COLUMNS = 3;
-                            const gapX = 40; const gapY = 40;
-                            const childWidth = node.width || 420;
-                            const ratio = node.data.aspectRatio || '16:9';
-                            const [rw, rh] = ratio.split(':').map(Number);
-                            const childHeight = (childWidth * rh / rw);
-                            const startX = node.x + (node.width || 420) + 150;
-                            const startY = node.y;
-                            const totalRows = Math.ceil(storyboard.length / COLUMNS);
-
-                            // 验证模型是否为图片生成模型
-                            const validImageModels = ['doubao-seedream-4-5-251128', 'nano-banana', 'nano-banana-pro'];
-                            let usedModel = node.data.model || 'doubao-seedream-4-5-251128';
-                            if (!validImageModels.includes(usedModel) && !usedModel.includes('gemini')) {
-                                usedModel = 'doubao-seedream-4-5-251128';
-                            }
-                            storyboard.forEach((shotPrompt, index) => {
-                                const col = index % COLUMNS;
-                                const row = Math.floor(index / COLUMNS);
-                                const posX = startX + col * (childWidth + gapX);
-                                const posY = startY + row * (childHeight + gapY);
-                                const newNodeId = `n-${Date.now()}-${index}`;
-                                newNodes.push({
-                                    id: newNodeId, type: NodeType.IMAGE_GENERATOR, x: posX, y: posY, width: childWidth, height: childHeight,
-                                    title: `分镜 ${index + 1}`, status: NodeStatus.WORKING,
-                                    data: { ...node.data, model: usedModel, aspectRatio: ratio, prompt: shotPrompt, image: undefined, images: undefined, imageCount: 1 },
-                                    inputs: [node.id]
-                                });
-                                newConnections.push({ from: node.id, to: newNodeId });
-                            });
-
-                            const groupPadding = 30;
-                            const groupWidth = (Math.min(storyboard.length, COLUMNS) * childWidth) + ((Math.min(storyboard.length, COLUMNS) - 1) * gapX) + (groupPadding * 2);
-                            const groupHeight = (totalRows * childHeight) + ((totalRows - 1) * gapY) + (groupPadding * 2);
-
-                            setGroups(prev => [...prev, { id: `g-${Date.now()}`, title: '分镜生成组', x: startX - groupPadding, y: startY - groupPadding, width: groupWidth, height: groupHeight }]);
-                            setNodes(prev => [...prev, ...newNodes]);
-                            setConnections(prev => [...prev, ...newConnections]);
-                            handleNodeUpdate(id, { status: NodeStatus.SUCCESS });
-
-                            newNodes.forEach(async (n) => {
-                                try {
-                                    const res = await generateImageFromText(n.data.prompt!, n.data.model!, inputImages, { aspectRatio: n.data.aspectRatio, resolution: n.data.resolution, count: 1 });
-                                    handleNodeUpdate(n.id, { image: res[0], images: res, model: n.data.model, aspectRatio: n.data.aspectRatio, status: NodeStatus.SUCCESS });
-                                } catch (e: any) {
-                                    handleNodeUpdate(n.id, { error: e.message, status: NodeStatus.ERROR });
-                                }
-                            });
-                            return;
-                        }
-                    } catch (e) {
-                        console.warn("Storyboard planning failed", e);
-                    }
-                }
                 // 判断是否创建新节点：当且仅当节点本身已有素材时
                 // 空节点 → 结果直接显示在当前节点
                 // 有素材的节点 → 创建新节点显示结果
@@ -1980,9 +2062,48 @@ export default function StudioTab() {
                 }
 
                 try {
-                    const strategy = await getGenerationStrategy(node, inputs, prompt);
                     const usedModel = node.data.model || 'veo3.1';
                     const usedAspectRatio = node.data.aspectRatio || '16:9';
+                    const isViduModel = usedModel.startsWith('vidu');
+
+                    // 解析 @主体 引用
+                    let processedPrompt = prompt;
+                    let subjectInputImage: string | null = null;
+                    let viduSubjects: { id: string; images: string[] }[] | undefined;
+
+                    const subjectRefs = parseSubjectReferences(prompt, subjects);
+                    if (subjectRefs.length > 0) {
+                        if (isViduModel) {
+                            // Vidu 场景：转换为 Vidu 主体格式
+                            console.log(`[VideoGen] Found ${subjectRefs.length} subject references for Vidu:`, subjectRefs.map(s => s.name));
+                            viduSubjects = subjectRefs.map(ref => ({
+                                id: ref.name, // 使用名称作为 ID，用于 prompt 中的 @引用
+                                images: ref.subject.images.map(img => img.base64).slice(0, 3), // Vidu 最多支持 3 张图片
+                            }));
+                            // 保留 prompt 中的 @主体名称，Vidu API 需要用它来关联
+                            processedPrompt = prompt;
+                            console.log(`[VideoGen] Vidu subjects:`, viduSubjects.map(s => ({ id: s.id, imageCount: s.images.length })));
+                        } else {
+                            // 非 Vidu 场景：将主体图片作为输入图
+                            console.log(`[VideoGen] Found ${subjectRefs.length} subject references for non-Vidu:`, subjectRefs.map(s => s.name));
+                            subjectInputImage = subjectRefs[0].primaryImage;
+                            processedPrompt = cleanSubjectReferences(prompt, subjects);
+                            console.log(`[VideoGen] Using subject image as input, cleaned prompt: ${processedPrompt.substring(0, 100)}...`);
+                        }
+                    }
+
+                    const strategy = await getGenerationStrategy(node, inputs, processedPrompt);
+
+                    // 如果有主体图片且策略没有提供输入图，使用主体图片
+                    const finalInputImage = strategy.inputImageForGeneration || subjectInputImage;
+
+                    // Vidu 主体参考模式：不使用首尾帧数据，避免冲突
+                    const useViduSubjectMode = isViduModel && viduSubjects && viduSubjects.length > 0;
+
+                    if (useViduSubjectMode && viduSubjects) {
+                        console.log(`[VideoGen] Using Vidu subject reference mode, ignoring firstLastFrame data`);
+                        console.log(`[VideoGen] viduSubjects:`, JSON.stringify(viduSubjects.map(s => ({ id: s.id, imageCount: s.images.length }))));
+                    }
 
                     const res = await generateVideo(
                         strategy.finalPrompt,
@@ -1994,11 +2115,12 @@ export default function StudioTab() {
                             resolution: node.data.resolution,
                             duration: node.data.duration,  // 视频时长
                             videoConfig: node.data.videoConfig,  // 厂商扩展配置
+                            viduSubjects,  // Vidu 主体参考
                         },
-                        strategy.inputImageForGeneration,
+                        useViduSubjectMode ? null : finalInputImage,  // 主体模式不使用输入图
                         strategy.videoInput,
-                        strategy.referenceImages,
-                        strategy.imageRoles  // 图片角色（首尾帧）
+                        useViduSubjectMode ? undefined : strategy.referenceImages,  // 主体模式不使用首尾帧
+                        useViduSubjectMode ? undefined : strategy.imageRoles  // 主体模式不使用图片角色
                     );
 
                     if (shouldCreateNewNode && factoryNodeId) {
@@ -2095,9 +2217,38 @@ export default function StudioTab() {
                             : node.data.videoUri;
                     }
 
-                    const strategy = await getGenerationStrategy(node, inputs, prompt);
                     const usedModel = node.data.model || 'veo3.1';
                     const usedAspectRatio = node.data.aspectRatio || '16:9';
+                    const isViduModel = usedModel.startsWith('vidu');
+
+                    // 解析 @主体 引用
+                    let processedPrompt = prompt;
+                    let subjectInputImage: string | null = null;
+                    let viduSubjects: { id: string; images: string[] }[] | undefined;
+
+                    const subjectRefs = parseSubjectReferences(prompt, subjects);
+                    if (subjectRefs.length > 0) {
+                        if (isViduModel) {
+                            // Vidu 场景：转换为 Vidu 主体格式
+                            console.log(`[VideoFactory] Found ${subjectRefs.length} subject references for Vidu:`, subjectRefs.map(s => s.name));
+                            viduSubjects = subjectRefs.map(ref => ({
+                                id: ref.name,
+                                images: ref.subject.images.map(img => img.base64).slice(0, 3),
+                            }));
+                            processedPrompt = prompt;
+                        } else {
+                            // 非 Vidu 场景：将主体图片作为输入图
+                            console.log(`[VideoFactory] Found ${subjectRefs.length} subject references for non-Vidu:`, subjectRefs.map(s => s.name));
+                            subjectInputImage = subjectRefs[0].primaryImage;
+                            processedPrompt = cleanSubjectReferences(prompt, subjects);
+                        }
+                    }
+
+                    const strategy = await getGenerationStrategy(node, inputs, processedPrompt);
+                    const finalInputImage = strategy.inputImageForGeneration || subjectInputImage;
+
+                    // Vidu 主体参考模式：不使用首尾帧数据，避免冲突
+                    const useViduSubjectMode = isViduModel && viduSubjects && viduSubjects.length > 0;
 
                     const res = await generateVideo(
                         strategy.finalPrompt,
@@ -2109,11 +2260,12 @@ export default function StudioTab() {
                             resolution: node.data.resolution,
                             duration: node.data.duration,  // 视频时长
                             videoConfig: node.data.videoConfig,  // 厂商扩展配置
+                            viduSubjects,  // Vidu 主体参考
                         },
-                        strategy.inputImageForGeneration,
+                        useViduSubjectMode ? null : finalInputImage,  // 主体模式不使用输入图
                         videoInput || strategy.videoInput,
-                        strategy.referenceImages,
-                        strategy.imageRoles  // 图片角色（首尾帧）
+                        useViduSubjectMode ? undefined : strategy.referenceImages,  // 主体模式不使用首尾帧
+                        useViduSubjectMode ? undefined : strategy.imageRoles  // 主体模式不使用图片角色
                     );
 
                     if (shouldCreateNewNode && newFactoryNodeId) {
@@ -2238,6 +2390,88 @@ export default function StudioTab() {
                 const img = node.data.image || inputImages[0];
                 const res = await editImageWithText(img, prompt, node.data.model || 'gemini-2.5-flash-image');
                 handleNodeUpdate(id, { image: res });
+
+            } else if (node.type === NodeType.IMAGE_3D_CAMERA) {
+                // 3D 运镜节点：使用相机参数重绘图片视角
+                const inputImages: string[] = [];
+                inputs.forEach(n => { if (n?.data.image) inputImages.push(n.data.image); });
+                const inputImage = node.data.image || inputImages[0];
+
+                if (!inputImage) {
+                    throw new Error('请连接或上传图片');
+                }
+
+                // 获取相机参数和画面比例
+                const cameraParams = node.data.cameraParams || { azimuth: 0, elevation: 0, distance: 1.0 };
+                const aspectRatio = node.data.aspectRatio || '1:1';
+                const usedModel = node.data.model || 'nano-banana';
+
+                // 生成视角描述提示词
+                // generateFullPrompt: 完整提示词，用于AI调用和UI显示
+                const { generateFullPrompt } = await import('@/services/camera3d');
+                const cameraPrompt = generateFullPrompt(cameraParams);
+
+                // 计算结果节点尺寸（根据画面比例）
+                const nodeWidth = 420;
+                const [rw, rh] = aspectRatio.split(':').map(Number);
+                const nodeHeight = (nodeWidth * rh) / rw;
+                const newNodeId = `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+                // 查找不重叠的位置
+                const startX = node.x + (node.width || 420) + 80;
+                const { x: newX, y: newY } = findNonOverlappingPosition(startX, node.y, nodeWidth, nodeHeight, nodesRef.current, 'right');
+
+                // 创建加载中的结果节点（复用图片生成节点样式）
+                const newNode: AppNode = {
+                    id: newNodeId,
+                    type: NodeType.IMAGE_GENERATOR,
+                    x: newX,
+                    y: newY,
+                    width: nodeWidth,
+                    height: nodeHeight,
+                    title: '运镜结果',
+                    status: NodeStatus.WORKING,
+                    data: {
+                        prompt: cameraPrompt, // 显示完整的AI提示词
+                        model: usedModel,
+                        aspectRatio: aspectRatio,
+                    },
+                    inputs: [id],
+                };
+
+                setNodes(prev => [...prev, newNode]);
+                setConnections(prev => [...prev, { from: id, to: newNodeId }]);
+
+                // 3D 运镜节点立即恢复空闲状态，保持可操作
+                setNodes(p => p.map(n => n.id === id ? { ...n, status: NodeStatus.IDLE } : n));
+
+                // 异步执行图像生成
+                (async () => {
+                    try {
+                        const res = await editImageWithText(inputImage, cameraPrompt, usedModel, aspectRatio);
+
+                        // 更新结果节点（保持 IMAGE_GENERATOR 类型以显示悬停提示词）
+                        setNodes(prev => prev.map(n => n.id === newNodeId ? {
+                            ...n,
+                            status: NodeStatus.SUCCESS,
+                            data: {
+                                ...n.data,
+                                image: res,
+                                images: [res],
+                            }
+                        } : n));
+                    } catch (error: any) {
+                        // 更新结果节点为错误状态
+                        setNodes(prev => prev.map(n => n.id === newNodeId ? {
+                            ...n,
+                            status: NodeStatus.ERROR,
+                            data: { ...n.data, error: error.message || '生成失败' }
+                        } : n));
+                    }
+                })();
+
+                // 直接返回，不执行后续的状态更新逻辑
+                return;
 
             } else if (node.type === NodeType.MULTI_FRAME_VIDEO) {
                 // 智能多帧视频生成
@@ -2501,6 +2735,86 @@ export default function StudioTab() {
         setCanvases(prev => prev.map(c => c.id === id ? { ...c, title: newTitle, updatedAt: Date.now() } : c));
     }, []);
 
+    // --- Subject Library Handlers ---
+    const handleAddSubject = useCallback(() => {
+        setEditingSubject(null);
+        setSubjectEditorInitialImage(null);
+        setIsSubjectEditorOpen(true);
+    }, []);
+
+    // 从画布素材创建主体
+    const handleCreateSubjectFromImage = useCallback((imageSrc: string) => {
+        setEditingSubject(null);
+        setSubjectEditorInitialImage(imageSrc);
+        setIsSubjectEditorOpen(true);
+    }, []);
+
+    // 从图片创建3D运镜节点
+    const handleCreate3DCameraFromImage = useCallback((imageSrc: string, sourceNodeId: string) => {
+        const sourceNode = nodes.find(n => n.id === sourceNodeId);
+        if (!sourceNode) return;
+
+        saveHistory();
+        const nodeWidth = 420;
+        const nodeHeight = 380; // 3D 运镜节点固定高度
+
+        // 新节点放在源节点右侧
+        const gap = 60;
+        const newX = sourceNode.x + (sourceNode.width || 420) + gap;
+        const newY = sourceNode.y;
+
+        const newNodeId = `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const savedConfig = loadNodeConfig(NodeType.IMAGE_3D_CAMERA);
+
+        const newNode: AppNode = {
+            id: newNodeId,
+            type: NodeType.IMAGE_3D_CAMERA,
+            x: newX,
+            y: newY,
+            width: nodeWidth,
+            height: nodeHeight,
+            title: '3D 运镜',
+            status: NodeStatus.IDLE,
+            data: {
+                model: savedConfig.model || 'nano-banana',
+                aspectRatio: savedConfig.aspectRatio || '16:9',
+            },
+            inputs: [sourceNodeId]
+        };
+
+        setNodes(prev => [...prev, newNode]);
+        setConnections(prev => [...prev, { from: sourceNodeId, to: newNodeId }]);
+    }, [nodes, saveHistory]);
+
+    const handleEditSubject = useCallback((id: string) => {
+        const subject = subjects.find(s => s.id === id);
+        if (subject) {
+            setEditingSubject(subject);
+            setIsSubjectEditorOpen(true);
+        }
+    }, [subjects]);
+
+    const handleDeleteSubject = useCallback((id: string) => {
+        setSubjects(prev => prev.filter(s => s.id !== id));
+    }, []);
+
+    const handleSaveSubject = useCallback((subject: Subject) => {
+        setSubjects(prev => {
+            const existingIndex = prev.findIndex(s => s.id === subject.id);
+            if (existingIndex >= 0) {
+                // 更新现有主体
+                const updated = [...prev];
+                updated[existingIndex] = subject;
+                return updated;
+            } else {
+                // 添加新主体
+                return [subject, ...prev];
+            }
+        });
+        setIsSubjectEditorOpen(false);
+        setEditingSubject(null);
+    }, []);
+
     // 自动保存当前画布（节流）
     useEffect(() => {
         if (!currentCanvasId || !isLoaded) return;
@@ -2612,6 +2926,23 @@ export default function StudioTab() {
             } catch (err) { console.error("Drop failed", err); }
         }
 
+        // 主体拖拽到画布 - 创建图片素材节点
+        const subjectData = e.dataTransfer.getData('application/subject');
+        if (subjectData) {
+            try {
+                const subject = JSON.parse(subjectData) as Subject;
+                const primaryImage = getPrimaryImage(subject);
+                if (primaryImage) {
+                    addNode(NodeType.IMAGE_GENERATOR, dropX - 210, dropY - 180, {
+                        image: primaryImage,
+                        prompt: subject.name,
+                        status: NodeStatus.SUCCESS,
+                    });
+                }
+                return;
+            } catch (err) { console.error("Subject drop failed", err); }
+        }
+
         // Updated Multi-File Logic (9-Grid Support)
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const files = Array.from(e.dataTransfer.files) as File[];
@@ -2681,13 +3012,14 @@ export default function StudioTab() {
                     // 只在画布空白区域双击时触发
                     const target = e.target as HTMLElement;
 
-                    // 排除：节点、分组、侧边栏、对话面板、节点配置面板
+                    // 排除：节点、分组、侧边栏、对话面板、节点配置面板、底部工具栏
                     const isOnNode = target.closest('[data-node-id]');
                     const isOnGroup = target.closest('[data-group-id]');
                     const isOnSidebar = target.closest('[data-sidebar]');
                     const isOnChat = target.closest('[data-chat-panel]');
                     const isOnConfigPanel = target.closest('[data-config-panel]');
-                    if (isOnNode || isOnGroup || isOnSidebar || isOnChat || isOnConfigPanel || selectionRect) return;
+                    const isOnBottomToolbar = target.closest('[data-bottom-toolbar]');
+                    if (isOnNode || isOnGroup || isOnSidebar || isOnChat || isOnConfigPanel || isOnBottomToolbar || selectionRect) return;
 
                     // 转换为画布坐标并检查是否在空白区域
                     const rect = canvasContainerRef.current?.getBoundingClientRect();
@@ -2729,7 +3061,7 @@ export default function StudioTab() {
                         <div className="relative">
                             <div className="relative flex flex-col items-center">
 
-                                {/* Logo & Title - 从 src/config/brand.ts 配置 */}
+                                {/* Logo & Title - 从 /public/brand.json 配置 */}
                                 <div className="flex items-center gap-4 mb-8">
                                     <div className="relative w-16 h-16 flex items-center justify-center">
                                         <img
@@ -3290,6 +3622,10 @@ export default function StudioTab() {
                             inputAssets={node.inputs.map(i => nodes.find(n => n.id === i)).filter(n => n && (n.data.image || n.data.videoUri || n.data.croppedFrame)).slice(0, 6).map(n => ({ id: n!.id, type: (n!.data.croppedFrame || n!.data.image) ? 'image' : 'video', src: n!.data.croppedFrame || n!.data.image || n!.data.videoUri! }))}
                             onInputReorder={(nodeId, newOrder) => { const node = nodes.find(n => n.id === nodeId); if (node) { setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, inputs: newOrder } : n)); } }}
                             nodeRef={(el) => { if (el) nodeRefsMap.current.set(node.id, el); else nodeRefsMap.current.delete(node.id); }}
+                            subjects={subjects}
+                            onOpenSubjectLibrary={() => setExternalOpenPanel('subjects')}
+                            onCreateSubject={handleCreateSubjectFromImage}
+                            on3DCamera={handleCreate3DCameraFromImage}
                             isDragging={draggingNodeId === node.id} isResizing={resizingNodeId === node.id} isConnecting={!!connectionStart} isGroupDragging={activeGroupNodeIds.includes(node.id)}
                         />
                     ))}
@@ -3461,6 +3797,7 @@ export default function StudioTab() {
                                     { type: NodeType.IMAGE_GENERATOR, label: '编辑图片', icon: ImageIcon, color: 'text-blue-500' },
                                     { type: NodeType.VIDEO_GENERATOR, label: '生成视频', icon: Film, color: 'text-purple-500' },
                                     { type: NodeType.MULTI_FRAME_VIDEO, label: '智能多帧', icon: Scan, color: 'text-teal-500' },
+                                    { type: NodeType.IMAGE_3D_CAMERA, label: '3D 运镜', icon: Camera, color: 'text-purple-400' },
                                 ];
                             } else if (hasVideo) {
                                 availableTypes = [
@@ -3501,6 +3838,7 @@ export default function StudioTab() {
                                         [NodeType.VIDEO_FACTORY]: '视频工厂',
                                         [NodeType.AUDIO_GENERATOR]: '音频生成',
                                         [NodeType.MULTI_FRAME_VIDEO]: '智能多帧',
+                                        [NodeType.IMAGE_3D_CAMERA]: '3D 运镜',
                                     };
                                     return typeMap[nodeType] || '新节点';
                                 };
@@ -3515,6 +3853,7 @@ export default function StudioTab() {
                                     if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
                                     if (nodeType === NodeType.VIDEO_GENERATOR) return 'veo3.1';
                                     if (nodeType === NodeType.VIDEO_FACTORY) return 'veo3.1';
+                                    if (nodeType === NodeType.IMAGE_3D_CAMERA) return 'nano-banana';
                                     return undefined;
                                 };
 
@@ -3750,12 +4089,20 @@ export default function StudioTab() {
                     onRenameCanvas={renameCanvas}
                     theme={theme}
                     onSetTheme={setTheme}
+                    // Subject Library
+                    subjects={subjects}
+                    onAddSubject={handleAddSubject}
+                    onEditSubject={handleEditSubject}
+                    onDeleteSubject={handleDeleteSubject}
+                    // External panel control
+                    externalOpenPanel={externalOpenPanel}
+                    onExternalPanelHandled={() => setExternalOpenPanel(null)}
                 />
 
                 <AssistantPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
                 {/* 底部工具栏：撤销/重做 + 缩放控制 */}
-                <div className="absolute bottom-8 right-8 flex items-center gap-1 px-2 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-300 dark:border-slate-600 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div data-bottom-toolbar className="absolute bottom-8 right-8 flex items-center gap-1 px-2 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-300 dark:border-slate-600 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     {/* 撤销/重做 */}
                     <button
                         onClick={undo}
@@ -3778,7 +4125,35 @@ export default function StudioTab() {
                     <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-1" />
 
                     {/* 缩放控制 */}
-                    <button onClick={() => setScale(s => Math.max(0.2, s - 0.1))} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700">
+                    <button
+                        onClick={() => {
+                            // 以节点重心为中心缩放
+                            const currentScale = scaleRef.current;
+                            const currentPan = panRef.current;
+                            const newScale = Math.max(0.2, currentScale - 0.1);
+
+                            const rect = canvasContainerRef.current?.getBoundingClientRect();
+                            if (!rect) {
+                                setScale(newScale);
+                                return;
+                            }
+
+                            // 获取节点重心在画布坐标系中的位置
+                            const centerCanvas = getNodesCenterPoint();
+
+                            // 将重心转换为屏幕坐标
+                            const centerScreenX = centerCanvas.x * currentScale + currentPan.x;
+                            const centerScreenY = centerCanvas.y * currentScale + currentPan.y;
+
+                            // 计算新的 pan，使重心在缩放后保持在相同的屏幕位置
+                            const newPanX = centerScreenX - centerCanvas.x * newScale;
+                            const newPanY = centerScreenY - centerCanvas.y * newScale;
+
+                            setScale(newScale);
+                            setPan({ x: newPanX, y: newPanY });
+                        }}
+                        className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
                         <Minus size={14} strokeWidth={2.5} />
                     </button>
                     <span
@@ -3788,7 +4163,35 @@ export default function StudioTab() {
                     >
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={() => setScale(s => Math.min(3, s + 0.1))} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700">
+                    <button
+                        onClick={() => {
+                            // 以节点重心为中心缩放
+                            const currentScale = scaleRef.current;
+                            const currentPan = panRef.current;
+                            const newScale = Math.min(3, currentScale + 0.1);
+
+                            const rect = canvasContainerRef.current?.getBoundingClientRect();
+                            if (!rect) {
+                                setScale(newScale);
+                                return;
+                            }
+
+                            // 获取节点重心在画布坐标系中的位置
+                            const centerCanvas = getNodesCenterPoint();
+
+                            // 将重心转换为屏幕坐标
+                            const centerScreenX = centerCanvas.x * currentScale + currentPan.x;
+                            const centerScreenY = centerCanvas.y * currentScale + currentPan.y;
+
+                            // 计算新的 pan，使重心在缩放后保持在相同的屏幕位置
+                            const newPanX = centerScreenX - centerCanvas.x * newScale;
+                            const newPanY = centerScreenY - centerCanvas.y * newScale;
+
+                            setScale(newScale);
+                            setPan({ x: newPanX, y: newPanY });
+                        }}
+                        className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
                         <Plus size={14} strokeWidth={2.5} />
                     </button>
 
@@ -3800,6 +4203,16 @@ export default function StudioTab() {
                         <Scan size={14} strokeWidth={2.5} />
                     </button>
                 </div>
+
+                {/* Subject Editor Modal */}
+                {isSubjectEditorOpen && (
+                    <SubjectEditor
+                        subject={editingSubject}
+                        initialImage={subjectEditorInitialImage || undefined}
+                        onSave={handleSaveSubject}
+                        onCancel={() => { setIsSubjectEditorOpen(false); setEditingSubject(null); setSubjectEditorInitialImage(null); }}
+                    />
+                )}
             </div>
         </div>
     );
