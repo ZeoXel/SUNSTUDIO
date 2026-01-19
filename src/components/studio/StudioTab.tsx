@@ -68,19 +68,57 @@ const generateVideo = async (
   referenceImages?: string[],
   imageRoles?: string[]
 ): Promise<VideoGenResult> => {
+  // 优先使用 referenceImages（首尾帧模式），否则使用单张输入图
+  let finalImages: string[] | undefined;
+  let finalImageRoles: ('first_frame' | 'last_frame')[] | undefined;
+
+  if (referenceImages && referenceImages.length > 0) {
+    // 首尾帧模式或多图模式
+    finalImages = referenceImages;
+    finalImageRoles = imageRoles;
+  } else if (inputImageBase64) {
+    // 单图模式
+    finalImages = [inputImageBase64];
+    finalImageRoles = undefined; // 单图模式不需要 roles
+  } else {
+    // 文生视频模式
+    finalImages = undefined;
+    finalImageRoles = undefined;
+  }
+
+  console.log('[generateVideo] Request params:', {
+    model,
+    aspectRatio: options.aspectRatio || '16:9',
+    duration: options.duration,
+    imagesCount: finalImages?.length || 0,
+    imageRoles: finalImageRoles,
+    hasVideoConfig: !!options.videoConfig,
+    hasViduSubjects: !!options.viduSubjects
+  });
+
+  const requestBody: any = {
+    prompt,
+    model,
+    aspectRatio: options.aspectRatio || '16:9',
+    duration: options.duration,
+    videoConfig: options.videoConfig,
+    viduSubjects: options.viduSubjects,
+  };
+
+  // 只有当 finalImages 存在时才添加 images 字段
+  if (finalImages) {
+    requestBody.images = finalImages;
+  }
+
+  // 只有当 finalImageRoles 存在时才添加 imageRoles 字段
+  if (finalImageRoles) {
+    requestBody.imageRoles = finalImageRoles;
+  }
+
   const response = await fetch('/api/studio/video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      model,
-      aspectRatio: options.aspectRatio || '16:9',
-      duration: options.duration,
-      images: inputImageBase64 ? [inputImageBase64] : referenceImages,
-      imageRoles,
-      videoConfig: options.videoConfig,
-      viduSubjects: options.viduSubjects, // Vidu 主体参考
-    }),
+    body: JSON.stringify(requestBody),
   });
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

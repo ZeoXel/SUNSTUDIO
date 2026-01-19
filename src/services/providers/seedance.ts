@@ -21,6 +21,7 @@ export interface SeedanceGenerateOptions {
   prompt: string;
   model?: string;
   duration?: number;      // 4-12 秒, -1 表示自动
+  aspectRatio?: string;   // 画面比例: 16:9, 9:16, 1:1, 4:3, 3:4, 21:9
   images?: string[];      // 参考图
   imageRoles?: ('first_frame' | 'last_frame')[];  // 首尾帧角色
   // 扩展配置
@@ -54,10 +55,35 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
     throw new Error('火山引擎 API Key 未配置');
   }
 
-  // 将 duration 追加到提示词 (--dur X)
+  // 验证并修正 duration（Seedance 1.5 Pro 支持 4-12 秒，或 -1 自动）
+  let validDuration = options.duration;
+  if (validDuration !== undefined && validDuration !== -1) {
+    if (validDuration < 4) {
+      console.warn(`[Seedance] Duration ${validDuration} is too short, using minimum 4s`);
+      validDuration = 4;
+    } else if (validDuration > 12) {
+      console.warn(`[Seedance] Duration ${validDuration} is too long, using maximum 12s`);
+      validDuration = 12;
+    }
+  }
+
+  // 将参数追加到提示词
   let finalPrompt = options.prompt;
-  if (options.duration && options.duration > 0) {
-    finalPrompt = `${options.prompt} --dur ${options.duration}`;
+  const params: string[] = [];
+
+  // 时长参数 --dur
+  if (validDuration && validDuration > 0) {
+    params.push(`--dur ${validDuration}`);
+  }
+
+  // 画面比例参数 --rt (ratio)
+  if (options.aspectRatio) {
+    params.push(`--rt ${options.aspectRatio}`);
+  }
+
+  // 拼接所有参数
+  if (params.length > 0) {
+    finalPrompt = `${options.prompt} ${params.join(' ')}`;
   }
 
   // 构建请求内容

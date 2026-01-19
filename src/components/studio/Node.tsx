@@ -1797,10 +1797,26 @@ const NodeComponent: React.FC<NodeProps> = ({
                         )}
                     </div>
                     {/* 视频扩展配置面板 - 仅视频节点且有支持的厂商时显示 */}
-                    {(node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) && currentProvider?.id && ['vidu', 'seedance', 'veo'].includes(currentProvider.id) && (
+                    {(node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) && currentProvider?.id && ['vidu', 'seedance', 'veo'].includes(currentProvider.id) && (() => {
+                        // 检测是否为首尾帧模式
+                        const hasFirstLastFrameData = !!(node.data.firstLastFrameData?.firstFrame || node.data.firstLastFrameData?.lastFrame);
+                        const isFirstLastFrameMode = (node.type === NodeType.VIDEO_GENERATOR || node.type === NodeType.VIDEO_FACTORY) &&
+                            (generationMode === 'FIRST_LAST_FRAME' || hasFirstLastFrameData);
+                        const hasTwoImageInputs = inputAssets && inputAssets.length === 2 && inputAssets.every(a => a.type === 'image');
+                        const showFirstLastFrameTag = isFirstLastFrameMode || hasTwoImageInputs;
+
+                        return (
                         <div className="px-3 pb-1">
                             <div className="flex items-center justify-between mb-1">
-                                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500">扩展配置</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500">扩展配置</span>
+                                    {/* 首尾帧标签 - 仅首尾帧模式显示 */}
+                                    {showFirstLastFrameTag && (
+                                        <span className="text-[8px] font-bold text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                                            首尾帧
+                                        </span>
+                                    )}
+                                </div>
                                 <ConfigExpandButton
                                     isCollapsed={!isVideoConfigExpanded}
                                     onClick={() => setIsVideoConfigExpanded(!isVideoConfigExpanded)}
@@ -1838,7 +1854,8 @@ const NodeComponent: React.FC<NodeProps> = ({
                                 )}
                             </CollapsibleContent>
                         </div>
-                    )}
+                        );
+                    })()}
                     <div className="flex items-center justify-between px-2 pb-1 pt-1 relative z-20">
                         <div className="flex items-center gap-2">
                             <div className="relative group/model">

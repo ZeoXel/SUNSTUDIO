@@ -14,6 +14,16 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { prompt, model, aspectRatio, duration, enhancePrompt, images, imageRoles, videoConfig, viduSubjects } = body;
 
+        console.log(`[Studio Video API] Received request:`, {
+            model,
+            aspectRatio,
+            duration,
+            imagesCount: images?.length || 0,
+            imageRoles,
+            videoConfig,
+            viduSubjectsCount: viduSubjects?.length || 0
+        });
+
         if (!prompt) {
             return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
         }
