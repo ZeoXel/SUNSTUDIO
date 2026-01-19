@@ -25,7 +25,7 @@ export interface StrategyResult {
     videoInput: any;
     inputImageForGeneration: string | null;
     referenceImages: string[] | undefined;
-    imageRoles?: string[];  // 图片角色标记（用于首尾帧：['first_frame', 'last_frame']）
+    imageRoles?: ('first_frame' | 'last_frame')[];  // 图片角色标记（用于首尾帧）
     generationMode: VideoGenerationMode;
     subjects?: SelectedSubject[];  // 主体参考（用于 SUBJECT_REF 模式）
 }
