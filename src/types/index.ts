@@ -34,8 +34,10 @@ export type VideoGenerationMode = 'DEFAULT' | 'CONTINUE' | 'CUT' | 'FIRST_LAST_F
 /** 主体图片 - 单张去背景后的主体图 */
 export interface SubjectImage {
   id: string;               // 图片唯一ID
-  base64: string;           // 去背景后的图片 (PNG with transparency)
-  originalBase64?: string;  // 原始图片 (用于参考)
+  base64?: string;          // 去背景后的图片 (PNG with transparency) [废弃，使用 url]
+  url?: string;             // COS URL (优先使用)
+  originalBase64?: string;  // 原始图片 [废弃，使用 originalUrl]
+  originalUrl?: string;     // 原始图片 COS URL
   angle?: 'front' | 'side' | 'back' | '3/4' | string;  // 角度标签
   createdAt: number;
 }
@@ -46,7 +48,8 @@ export interface Subject {
   name: string;             // 主体名称 (如 "机器人角色A")
   category?: string;        // 分类: 'character' | 'object' | 'animal' | 'vehicle' | 自定义
   description?: string;     // 描述信息
-  thumbnail: string;        // 缩略图 (Base64, 取自第一张图)
+  thumbnail?: string;       // 缩略图 [废弃，使用 thumbnailUrl]
+  thumbnailUrl?: string;    // 缩略图 COS URL (优先使用)
   images: SubjectImage[];   // 多角度图片集合 (1-3张最优, Vidu最多3张)
   voiceId?: string;         // 关联的音色ID (用于 Vidu 音视频直出)
   tags?: string[];          // 自定义标签
@@ -57,7 +60,8 @@ export interface Subject {
 /** 主体选择结果 - 用于生成时传递 */
 export interface SelectedSubject {
   id: string;
-  images: string[];         // 选中的图片 Base64 数组
+  images?: string[];        // 选中的图片 Base64 数组 [废弃，使用 imageUrls]
+  imageUrls?: string[];     // 选中的图片 COS URL 数组 (优先使用)
   voiceId?: string;
 }
 
@@ -105,10 +109,15 @@ export interface AppNode {
     prompt?: string; // 生成/优化后的提示词（用于下游节点）
     userInput?: string; // 用户的简短想法（用于生成提示词的输入）
     model?: string; // Selected AI model
-    image?: string; // Base64 (The currently displayed main image)
-    originalImage?: string; // Base64 (Original image before doodles, for editing)
+    // 图片字段 - URL 优先，Base64 作为兼容
+    image?: string; // Base64 [废弃，使用 imageUrl]
+    imageUrl?: string; // COS URL (优先使用)
+    originalImage?: string; // Base64 [废弃，使用 originalImageUrl]
+    originalImageUrl?: string; // COS URL (优先使用)
     canvasData?: string; // Base64 PNG (Doodle layer only, transparent background)
-    images?: string[]; // Array of Base64 strings (for multiple generations)
+    canvasDataUrl?: string; // COS URL (优先使用)
+    images?: string[]; // Array of Base64 [废弃，使用 imageUrls]
+    imageUrls?: string[]; // Array of COS URLs (优先使用)
     imageCount?: number; // Number of images to generate (1-4)
     videoCount?: number; // Number of videos to generate (1-4)
     videoUri?: string; // URL
@@ -129,15 +138,18 @@ export interface AppNode {
     duration?: number; // Duration in seconds (for Audio/Video)
     
     // Video Strategies (StoryContinuator, SceneDirector, FrameWeaver, CharacterRef)
-    generationMode?: VideoGenerationMode; 
-    selectedFrame?: string; // Base64 of the specific frame captured from video (Raw)
-    croppedFrame?: string; // Base64 of the cropped/edited frame (Final Input)
-    
+    generationMode?: VideoGenerationMode;
+    selectedFrame?: string; // Base64 [废弃，使用 selectedFrameUrl]
+    selectedFrameUrl?: string; // COS URL (优先使用)
+    croppedFrame?: string; // Base64 [废弃，使用 croppedFrameUrl]
+    croppedFrameUrl?: string; // COS URL (优先使用)
+
     // Input Management
     sortedInputIds?: string[]; // Order of input nodes for multi-image composition
 
     // Reference Images (用户上传的参考图，区别于生成结果)
-    referenceImages?: string[]; // Base64 strings of uploaded reference images
+    referenceImages?: string[]; // Base64 [废弃，使用 referenceImageUrls]
+    referenceImageUrls?: string[]; // COS URLs (优先使用)
 
     // Multi-Frame Video (智能多帧视频节点数据)
     multiFrameData?: {
@@ -149,8 +161,10 @@ export interface AppNode {
 
     // First-Last Frame (首尾帧视频生成)
     firstLastFrameData?: {
-      firstFrame?: string;  // Base64 首帧图片
-      lastFrame?: string;   // Base64 尾帧图片
+      firstFrame?: string;  // Base64 [废弃，使用 firstFrameUrl]
+      firstFrameUrl?: string; // COS URL (优先使用)
+      lastFrame?: string;   // Base64 [废弃，使用 lastFrameUrl]
+      lastFrameUrl?: string; // COS URL (优先使用)
     };
 
     // Video Provider Extended Config (视频厂商扩展配置)
@@ -246,3 +260,6 @@ declare global {
     openSelectKey: () => Promise<void>;
   }
 }
+
+// 导出积分系统类型
+export * from './credits';

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Edit, Trash2 } from 'lucide-react';
 import type { Subject } from '@/types';
+import { getSubjectThumbnailSrc } from '@/services/cosStorage';
 
 interface SubjectCardProps {
   subject: Subject;
@@ -67,7 +68,7 @@ export const SubjectCard: React.FC<SubjectCardProps> = ({
         title={subject.name}
       >
         <img
-          src={subject.thumbnail}
+          src={getSubjectThumbnailSrc(subject)}
           alt={subject.name}
           className="w-full h-full object-cover"
           draggable={false}
@@ -100,7 +101,7 @@ export const SubjectCard: React.FC<SubjectCardProps> = ({
       {/* 缩略图 */}
       <div className="aspect-square">
         <img
-          src={subject.thumbnail}
+          src={getSubjectThumbnailSrc(subject)}
           alt={subject.name}
           className="w-full h-full object-cover"
           draggable={false}

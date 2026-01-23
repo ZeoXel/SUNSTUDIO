@@ -7,6 +7,7 @@
 
 import { SmartSequenceItem } from '@/types';
 import { viduCreateTask, viduQueryTask, GatewayError } from './gateway';
+import { recordVideoConsumption } from './consumptionTracker';
 
 // Vidu 模型选项
 export const VIDU_MODELS = [
@@ -148,11 +149,38 @@ export async function generateViduMultiFrame(
 /**
  * 查询 Vidu 任务状态和生成结果
  * 通过 USERAPI 网关调用
+ *
+ * @param taskId 任务ID
+ * @param options 可选参数，用于消耗记录
  */
-export async function queryViduTask(taskId: string): Promise<ViduTaskResponse> {
+export async function queryViduTask(
+    taskId: string,
+    options?: {
+        model?: string;
+        resolution?: string;
+        durationSeconds?: number;
+        prompt?: string;
+        recordConsumption?: boolean;  // 是否记录消耗，默认 true
+    }
+): Promise<ViduTaskResponse> {
     try {
         // 通过网关查询
         const result = await viduQueryTask(taskId);
+
+        // 如果任务成功完成且有credits信息，记录消耗
+        if (result.state === 'success' && result.credits !== undefined && result.task_id && options?.recordConsumption !== false) {
+            recordVideoConsumption({
+                provider: 'vidu',
+                model: options?.model || 'viduq2-pro',
+                taskId: result.task_id,
+                durationSeconds: options?.durationSeconds || 4,
+                resolution: (options?.resolution as '480p' | '720p' | '1080p') || '720p',
+                prompt: options?.prompt,
+                viduCredits: result.credits,
+            }).catch(err => {
+                console.warn('[Vidu] Failed to record consumption:', err);
+            });
+        }
 
         return {
             success: true,

@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
             'ark-content-generation-cn-beijing.tos-cn-beijing.volces.com',
             'ark-content-generation-v2-cn-beijing.tos-cn-beijing.volces.com',
             'prod-ss-vidu.s3.cn-northwest-1.amazonaws.com.cn', // Vidu S3
+            'cos.lsaigc.com', // Our COS domain
+            'lsjx-1354453097.cos.ap-beijing.myqcloud.com', // COS original domain
         ];
 
         const urlObj = new URL(url);

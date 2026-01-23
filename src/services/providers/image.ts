@@ -37,8 +37,10 @@ const getProviderFromModel = (model: string): 'nano-banana' | 'gemini' => {
 export const generateImage = async (options: ImageGenerateOptions): Promise<ImageGenerationResult> => {
   const { baseUrl, apiKey } = getApiConfig();
 
+  console.log('[Image] Config:', { baseUrl, hasApiKey: !!apiKey, apiKeyPrefix: apiKey?.slice(0, 10) });
+
   if (!apiKey) {
-    throw new Error('API Key未配置');
+    throw new Error('API Key未配置，请检查 OPENAI_API_KEY 环境变量');
   }
 
   const provider = getProviderFromModel(options.model);

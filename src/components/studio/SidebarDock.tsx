@@ -517,7 +517,7 @@ export const SidebarDock: React.FC<SidebarDockProps> = ({
             {/* Left Vertical Dock */}
             <div
                 data-sidebar
-                className="fixed left-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 p-2 bg-[#ffffff]/70 dark:bg-slate-900/70 backdrop-blur-2xl border border-slate-300 dark:border-slate-700 rounded-2xl shadow-2xl z-50 animate-in slide-in-from-left-10 duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                className="fixed left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 px-2 py-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-300 dark:border-slate-600 rounded-2xl shadow-2xl z-50 animate-in slide-in-from-left-10 duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
                 onMouseLeave={handleSidebarLeave}
             >
                 {[

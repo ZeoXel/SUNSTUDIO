@@ -6,10 +6,13 @@
  *
  * POST - 创建视频生成任务
  * GET  - 查询任务状态
+ *
+ * 生成结果自动上传到 COS 存储
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import * as viduService from '@/services/providers/vidu';
+import { smartUploadVideoServer, buildMediaPathServer } from '@/services/cosStorageServer';
 
 // Route Segment Config
 export const maxDuration = 300; // 5 分钟超时
@@ -129,9 +132,15 @@ export async function POST(request: NextRequest) {
             }
         );
 
+        // 上传到 COS 存储（将临时 URL 转为永久存储）
+        const uploadPath = buildMediaPathServer('videos');
+        console.log(`[Vidu API] Uploading video to COS (${uploadPath})...`);
+        const videoUrl = await smartUploadVideoServer(result.videoUrl, uploadPath);
+        console.log(`[Vidu API] Video uploaded: ${videoUrl}`);
+
         return NextResponse.json({
             success: true,
-            videoUrl: result.videoUrl,
+            videoUrl,
             coverUrl: result.coverUrl,
             taskId: result.taskId,
         });
@@ -161,10 +170,18 @@ export async function GET(request: NextRequest) {
         const result = await viduService.queryTask(taskId);
         const creation = result.creations?.[0];
 
+        // 如果任务成功且有视频 URL，上传到 COS
+        let videoUrl = creation?.url;
+        if (result.state === 'success' && videoUrl) {
+            const uploadPath = buildMediaPathServer('videos');
+            console.log(`[Vidu Query] Uploading video to COS...`);
+            videoUrl = await smartUploadVideoServer(videoUrl, uploadPath);
+        }
+
         return NextResponse.json({
             taskId: result.task_id,
             state: result.state,
-            videoUrl: creation?.url,
+            videoUrl,
             coverUrl: creation?.cover_url,
             credits: result.credits,
             error: result.state === 'failed' ? result.err_code : undefined,

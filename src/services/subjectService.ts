@@ -4,9 +4,14 @@
  * 核心理念：主体 = 命名的参考图素材库
  * - Vidu: 原生多图主体支持
  * - 其他场景: @主体ID 自动解析为参考图输入
+ *
+ * 存储策略：
+ * - 图片优先使用 COS URL
+ * - 兼容 Base64（旧数据）
  */
 
-import type { Subject } from '@/types';
+import type { Subject, SubjectImage } from '@/types';
+import { uploadToCos, getSubjectImageSrc, getSubjectThumbnailSrc, buildSubjectPath } from './cosStorage';
 
 // ==================== 主体引用解析 ====================
 
@@ -49,8 +54,10 @@ export const parseSubjectReferences = (
 
       if (subject.images.length > 0) {
         // 获取主要图片：优先 front 角度，否则取第一张
+        // 优先使用 URL，回退到 Base64
         const frontImage = subject.images.find(img => img.angle === 'front');
-        const primaryImage = frontImage?.base64 || subject.images[0].base64;
+        const targetImage = frontImage || subject.images[0];
+        const primaryImage = getSubjectImageSrc(targetImage);
 
         refs.push({
           id: subject.id,
@@ -96,12 +103,13 @@ export const cleanSubjectReferences = (prompt: string, subjects?: Subject[]): st
 /**
  * 获取主体的主要图片（front 角度或第一张）
  * @param subject 主体
- * @returns 主要图片 Base64
+ * @returns 主要图片 URL 或 Base64
  */
 export const getPrimaryImage = (subject: Subject): string | null => {
   if (!subject || !subject.images || subject.images.length === 0) return null;
   const frontImage = subject.images.find(img => img.angle === 'front');
-  return frontImage?.base64 || subject.images[0].base64;
+  const targetImage = frontImage || subject.images[0];
+  return getSubjectImageSrc(targetImage);
 };
 
 // ==================== 缩略图生成 ====================
@@ -175,4 +183,95 @@ export const generateSubjectId = (prefix: string = 'subj'): string => {
  */
 export const generateSubjectImageId = (): string => {
   return generateSubjectId('simg');
+};
+
+// ==================== COS 上传 ====================
+
+/**
+ * 上传主体图片到 COS
+ * @param subjectId 主体 ID
+ * @param image 图片数据（Base64 或 File）
+ * @param angle 角度标签
+ * @returns 更新后的 SubjectImage
+ */
+export const uploadSubjectImage = async (
+  subjectId: string,
+  image: string | File,
+  angle?: SubjectImage['angle']
+): Promise<SubjectImage> => {
+  const imageId = generateSubjectImageId();
+  // 使用统一路径结构: zeocanvas/{userId}/subject/{subjectId}/{filename}
+  const prefix = buildSubjectPath(subjectId);
+
+  const result = await uploadToCos(image, { prefix });
+
+  return {
+    id: imageId,
+    url: result.url,
+    angle,
+    createdAt: Date.now(),
+  };
+};
+
+/**
+ * 上传主体缩略图到 COS
+ * @param subjectId 主体 ID
+ * @param thumbnail 缩略图（Base64 或 File）
+ * @returns COS URL
+ */
+export const uploadSubjectThumbnail = async (
+  subjectId: string,
+  thumbnail: string | File
+): Promise<string> => {
+  // 使用统一路径结构: zeocanvas/{userId}/subject/{subjectId}/{filename}
+  const prefix = buildSubjectPath(subjectId);
+  const result = await uploadToCos(thumbnail, { prefix });
+  return result.url;
+};
+
+/**
+ * 创建新主体并上传图片到 COS
+ * @param name 主体名称
+ * @param images 图片数据数组
+ * @param options 可选配置
+ * @returns 新创建的主体
+ */
+export const createSubjectWithUpload = async (
+  name: string,
+  images: Array<{ data: string | File; angle?: SubjectImage['angle'] }>,
+  options?: { category?: string; description?: string; voiceId?: string; tags?: string[] }
+): Promise<Subject> => {
+  const subjectId = generateSubjectId();
+  const now = Date.now();
+
+  // 上传所有图片
+  const uploadedImages = await Promise.all(
+    images.map((img) => uploadSubjectImage(subjectId, img.data, img.angle))
+  );
+
+  // 生成并上传缩略图
+  const firstImageUrl = uploadedImages[0]?.url;
+  let thumbnailUrl = firstImageUrl;
+  if (firstImageUrl) {
+    try {
+      const thumbnailBase64 = await generateThumbnail(firstImageUrl);
+      thumbnailUrl = await uploadSubjectThumbnail(subjectId, thumbnailBase64);
+    } catch {
+      // 缩略图生成失败时使用原图
+      thumbnailUrl = firstImageUrl;
+    }
+  }
+
+  return {
+    id: subjectId,
+    name,
+    category: options?.category,
+    description: options?.description,
+    thumbnailUrl,
+    images: uploadedImages,
+    voiceId: options?.voiceId,
+    tags: options?.tags,
+    createdAt: now,
+    updatedAt: now,
+  };
 };

@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useCallback, useRef } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, Loader2 } from 'lucide-react';
 import type { Subject, SubjectImage } from '@/types';
-import { generateSubjectId, generateThumbnail } from '@/services/subjectService';
+import { generateSubjectId, generateThumbnail, uploadSubjectImage, uploadSubjectThumbnail } from '@/services/subjectService';
+import { getSubjectImageSrc, getSubjectThumbnailSrc } from '@/services/cosStorage';
 import { SubjectExtractor } from './SubjectExtractor';
 
 interface SubjectEditorProps {
@@ -30,6 +31,7 @@ export const SubjectEditor: React.FC<SubjectEditorProps> = ({
   // UI 状态
   const [extractorSource, setExtractorSource] = useState<string | null>(initialImage || null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 处理文件上传
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,27 +93,57 @@ export const SubjectEditor: React.FC<SubjectEditorProps> = ({
       return;
     }
 
-    // 生成缩略图
-    let thumbnail = subject?.thumbnail || '';
+    setIsSaving(true);
+
     try {
-      thumbnail = await generateThumbnail(images[0].base64, 200);
+      const subjectId = subject?.id || generateSubjectId();
+      const now = Date.now();
+
+      // 上传图片到 COS（仅上传新图片，已有 URL 的跳过）
+      const uploadedImages = await Promise.all(
+        images.map(async (img) => {
+          // 如果已有 URL，直接返回
+          if (img.url) return img;
+          // 如果只有 base64，上传到 COS
+          if (img.base64) {
+            const uploaded = await uploadSubjectImage(subjectId, img.base64, img.angle);
+            return uploaded;
+          }
+          return img;
+        })
+      );
+
+      // 生成并上传缩略图
+      const firstImageSrc = getSubjectImageSrc(uploadedImages[0]);
+      let thumbnailUrl = subject?.thumbnailUrl || getSubjectThumbnailSrc(subject || {});
+
+      if (firstImageSrc) {
+        try {
+          const thumbnailBase64 = await generateThumbnail(firstImageSrc, 200);
+          thumbnailUrl = await uploadSubjectThumbnail(subjectId, thumbnailBase64);
+        } catch (err) {
+          console.error('生成缩略图失败:', err);
+          thumbnailUrl = firstImageSrc; // 回退使用原图
+        }
+      }
+
+      const newSubject: Subject = {
+        id: subjectId,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        thumbnailUrl,
+        images: uploadedImages,
+        createdAt: subject?.createdAt || now,
+        updatedAt: now,
+      };
+
+      onSave(newSubject);
     } catch (err) {
-      console.error('生成缩略图失败:', err);
-      thumbnail = images[0].base64;  // 回退使用原图
+      console.error('保存主体失败:', err);
+      alert('保存失败，请重试');
+    } finally {
+      setIsSaving(false);
     }
-
-    const now = Date.now();
-    const newSubject: Subject = {
-      id: subject?.id || generateSubjectId(),
-      name: name.trim(),
-      description: description.trim() || undefined,
-      thumbnail,
-      images,
-      createdAt: subject?.createdAt || now,
-      updatedAt: now,
-    };
-
-    onSave(newSubject);
   }, [name, description, images, subject, onSave]);
 
   return (
@@ -168,7 +200,7 @@ export const SubjectEditor: React.FC<SubjectEditorProps> = ({
                     }}
                   >
                     <img
-                      src={img.base64}
+                      src={getSubjectImageSrc(img)}
                       alt={`角度 ${index + 1}`}
                       className="w-full h-full object-contain"
                     />
@@ -239,10 +271,11 @@ export const SubjectEditor: React.FC<SubjectEditorProps> = ({
             </button>
             <button
               onClick={handleSave}
-              disabled={!name.trim() || images.length === 0}
-              className="px-4 py-2 text-xs font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!name.trim() || images.length === 0 || isSaving}
+              className="px-4 py-2 text-xs font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
-              {isEditing ? '保存修改' : '创建主体'}
+              {isSaving && <Loader2 size={12} className="animate-spin" />}
+              {isSaving ? '保存中...' : (isEditing ? '保存修改' : '创建主体')}
             </button>
           </div>
         </div>

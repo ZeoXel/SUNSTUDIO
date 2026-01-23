@@ -20,7 +20,7 @@ const getVolcengineConfig = () => {
 export interface SeedanceGenerateOptions {
   prompt: string;
   model?: string;
-  duration?: number;      // 4-12 秒, -1 表示自动
+  duration?: number;      // ⚠️ 当前 API 不支持自定义 duration，使用模型默认时长
   images?: string[];      // 参考图
   imageRoles?: ('first_frame' | 'last_frame')[];  // 首尾帧角色
   // 扩展配置
@@ -54,11 +54,10 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
     throw new Error('火山引擎 API Key 未配置');
   }
 
-  // 将 duration 追加到提示词 (--dur X)
-  let finalPrompt = options.prompt;
-  if (options.duration && options.duration > 0) {
-    finalPrompt = `${options.prompt} --dur ${options.duration}`;
-  }
+  // 注意：Seedance API 当前不支持通过 --dur 参数设置 duration
+  // API 会使用模型默认的视频时长
+  // 如果将来需要支持自定义 duration，需要查阅最新的 API 文档
+  const finalPrompt = options.prompt;
 
   // 构建请求内容
   const content: any[] = [{ type: 'text', text: finalPrompt }];
@@ -196,6 +195,8 @@ export const PROVIDER_INFO = {
   ],
   capabilities: {
     aspectRatios: ['16:9', '9:16', '1:1'],
+    // 注意：当前 API 不支持自定义 duration，以下配置仅供前端 UI 显示
+    // 实际生成时会使用模型默认时长（通常为 5 秒）
     durations: [-1, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     firstLastFrame: true,
     multiOutput: true,

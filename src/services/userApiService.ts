@@ -8,6 +8,7 @@ export interface UserApiUser {
     id: string;
     provider: string;
     name: string;
+    username?: string; // 用户名，可自定义
     email: string | null;
     phone: string | null;
     avatar: string | null;
