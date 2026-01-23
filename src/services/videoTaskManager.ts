@@ -5,7 +5,10 @@
  * - 持久化待处理的视频任务到 localStorage
  * - 页面刷新后恢复轮询
  * - 任务完成后自动清理
+ * - 自动压缩图片避免 Vercel 请求体大小限制
  */
+
+import { compressImages } from '@/services/providers/shared';
 
 const STORAGE_KEY = 'zeocanvas_video_tasks';
 
@@ -134,10 +137,36 @@ export const createVideoTask = async (
     viduSubjects?: any[];
   }
 ): Promise<VideoTask> => {
+  // 压缩图片避免 Vercel 4.5MB 请求体限制
+  const compressedBody = { ...requestBody };
+
+  if (requestBody.images && requestBody.images.length > 0) {
+    console.log(`[VideoTaskManager] Compressing ${requestBody.images.length} images...`);
+    compressedBody.images = await compressImages(requestBody.images, {
+      maxWidth: 1280,
+      maxHeight: 720,
+      quality: 0.85,
+    });
+  }
+
+  if (requestBody.viduSubjects && requestBody.viduSubjects.length > 0) {
+    console.log(`[VideoTaskManager] Compressing Vidu subject images...`);
+    compressedBody.viduSubjects = await Promise.all(
+      requestBody.viduSubjects.map(async (subject: any) => ({
+        ...subject,
+        images: await compressImages(subject.images || [], {
+          maxWidth: 1280,
+          maxHeight: 720,
+          quality: 0.85,
+        }),
+      }))
+    );
+  }
+
   const response = await fetch('/api/studio/video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify(compressedBody),
   });
 
   if (!response.ok) {
