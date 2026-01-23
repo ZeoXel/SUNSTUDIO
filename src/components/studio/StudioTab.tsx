@@ -58,8 +58,12 @@ interface VideoGenResult {
   uris?: string[];
 }
 
-// 视频生成 (前端轮询模式，避免 Vercel serverless 超时)
-const generateVideo = async (
+// 视频任务管理器 - 支持持久化和页面刷新后恢复
+import * as videoTaskManager from '@/services/videoTaskManager';
+
+// 视频生成 (前端轮询模式，支持页面刷新恢复)
+const generateVideoWithPolling = async (
+  nodeId: string,
   prompt: string,
   model: string,
   options: { aspectRatio?: string; count?: number; generationMode?: any; resolution?: string; duration?: number; videoConfig?: any; viduSubjects?: { id: string; images: string[] }[] } = {},
@@ -83,16 +87,6 @@ const generateVideo = async (
     finalImageRoles = undefined;
   }
 
-  console.log('[generateVideo] Request params:', {
-    model,
-    aspectRatio: options.aspectRatio || '16:9',
-    duration: options.duration,
-    imagesCount: finalImages?.length || 0,
-    imageRoles: finalImageRoles,
-    hasVideoConfig: !!options.videoConfig,
-    hasViduSubjects: !!options.viduSubjects
-  });
-
   const requestBody: any = {
     prompt,
     model,
@@ -109,62 +103,30 @@ const generateVideo = async (
     requestBody.imageRoles = finalImageRoles;
   }
 
-  // 1. 创建任务（立即返回 taskId）
-  const createResponse = await fetch('/api/studio/video', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
-  if (!createResponse.ok) {
-    const errorData = await createResponse.json().catch(() => ({}));
-    throw new Error(errorData.error || `API错误: ${createResponse.status}`);
-  }
-  const createResult = await createResponse.json();
-  const { taskId, provider } = createResult;
+  // 1. 创建任务并持久化
+  const task = await videoTaskManager.createVideoTask(nodeId, requestBody);
+  console.log(`[generateVideo] Task created and saved: ${task.taskId}, provider: ${task.provider}`);
 
-  console.log(`[generateVideo] Task created: ${taskId}, provider: ${provider}`);
+  // 2. 轮询等待结果
+  const result = await videoTaskManager.pollTask(
+    task,
+    (status) => console.log(`[generateVideo] Status: ${status}`),
+  );
 
-  // 2. 前端轮询等待结果（最多 10 分钟）
-  const maxAttempts = 120;
-  const pollInterval = 5000; // 5 秒
-
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-    try {
-      const queryResponse = await fetch(`/api/studio/video?taskId=${taskId}&provider=${provider}`);
-      if (!queryResponse.ok) {
-        console.warn(`[generateVideo] Query failed (attempt ${i + 1}):`, queryResponse.status);
-        continue;
-      }
-
-      const queryResult = await queryResponse.json();
-      console.log(`[generateVideo] Poll ${i + 1}/${maxAttempts}:`, queryResult.status);
-
-      if (queryResult.status === 'SUCCESS') {
-        if (!queryResult.videoUrl) {
-          throw new Error('视频生成成功但未返回 URL');
-        }
-        return {
-          uri: queryResult.videoUrl,
-          isFallbackImage: false,
-          videoMetadata: { taskId },
-          uris: [queryResult.videoUrl],
-        };
-      }
-
-      if (queryResult.status === 'FAILURE') {
-        throw new Error(queryResult.error || '视频生成失败');
-      }
-
-      // IN_PROGRESS - 继续轮询
-    } catch (err: any) {
-      // 查询错误，继续尝试
-      console.warn(`[generateVideo] Query error (attempt ${i + 1}):`, err.message);
-    }
+  if (!result || result.status !== 'SUCCESS') {
+    throw new Error(result?.error || '视频生成失败');
   }
 
-  throw new Error('视频生成超时（10分钟）');
+  if (!result.videoUrl) {
+    throw new Error('视频生成成功但未返回 URL');
+  }
+
+  return {
+    uri: result.videoUrl,
+    isFallbackImage: false,
+    videoMetadata: { taskId: task.taskId },
+    uris: [result.videoUrl],
+  };
 };
 import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
@@ -773,6 +735,59 @@ export default function StudioTab() {
         saveSubjects(subjects);
     }, [subjects, isLoaded]);
 
+    // 恢复待处理的视频任务轮询
+    useEffect(() => {
+        if (!isLoaded) return;
+
+        const pendingTasks = videoTaskManager.getPendingTasks();
+        if (pendingTasks.length === 0) return;
+
+        console.log(`[VideoTaskRestore] Found ${pendingTasks.length} pending video tasks, resuming polling...`);
+
+        pendingTasks.forEach(task => {
+            // 检查节点是否存在
+            const node = nodesRef.current.find(n => n.id === task.nodeId);
+            if (!node) {
+                console.log(`[VideoTaskRestore] Node ${task.nodeId} not found, removing task ${task.taskId}`);
+                videoTaskManager.removeTask(task.taskId);
+                return;
+            }
+
+            // 设置节点为工作状态
+            setNodes(prev => prev.map(n =>
+                n.id === task.nodeId ? { ...n, status: NodeStatus.WORKING } : n
+            ));
+
+            // 恢复轮询
+            videoTaskManager.pollTask(
+                task,
+                (status) => {
+                    console.log(`[VideoTaskRestore] Task ${task.taskId} status: ${status}`);
+                },
+                (result) => {
+                    console.log(`[VideoTaskRestore] Task ${task.taskId} completed:`, result.videoUrl);
+                    // 更新节点
+                    handleNodeUpdate(task.nodeId, {
+                        videoUri: result.videoUrl,
+                        videoMetadata: { taskId: task.taskId },
+                        videoUris: result.videoUrl ? [result.videoUrl] : undefined,
+                        model: task.model,
+                        aspectRatio: task.aspectRatio,
+                    });
+                    setNodes(prev => prev.map(n =>
+                        n.id === task.nodeId ? { ...n, status: NodeStatus.SUCCESS } : n
+                    ));
+                },
+                (error) => {
+                    console.error(`[VideoTaskRestore] Task ${task.taskId} failed:`, error);
+                    handleNodeUpdate(task.nodeId, { error });
+                    setNodes(prev => prev.map(n =>
+                        n.id === task.nodeId ? { ...n, status: NodeStatus.ERROR } : n
+                    ));
+                }
+            );
+        });
+    }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const getApproxNodeHeight = (node: AppNode) => {
         if (node.height) return node.height;
@@ -2177,7 +2192,11 @@ export default function StudioTab() {
                         console.log(`[VideoGen] viduSubjects:`, JSON.stringify(viduSubjects.map(s => ({ id: s.id, imageCount: s.images.length }))));
                     }
 
-                    const res = await generateVideo(
+                    // 确定目标节点 ID（新节点或当前节点）
+                    const targetNodeId = shouldCreateNewNode && factoryNodeId ? factoryNodeId : id;
+
+                    const res = await generateVideoWithPolling(
+                        targetNodeId,
                         strategy.finalPrompt,
                         usedModel,
                         {
@@ -2322,7 +2341,11 @@ export default function StudioTab() {
                     // Vidu 主体参考模式：不使用首尾帧数据，避免冲突
                     const useViduSubjectMode = isViduModel && viduSubjects && viduSubjects.length > 0;
 
-                    const res = await generateVideo(
+                    // 确定目标节点 ID（新节点或当前节点）
+                    const targetNodeId = shouldCreateNewNode && newFactoryNodeId ? newFactoryNodeId : id;
+
+                    const res = await generateVideoWithPolling(
+                        targetNodeId,
                         strategy.finalPrompt,
                         usedModel,
                         {
