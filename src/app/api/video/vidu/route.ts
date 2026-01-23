@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as viduService from '@/services/providers/vidu';
 
 // Route Segment Config
-export const maxDuration = 300; // 5 分钟超时
+export const maxDuration = 60; // 创建任务只需要很短时间
 export const dynamic = 'force-dynamic';
 
 // POST: 创建视频生成任务
@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
             image_settings,
             // 参考生视频专用
             subjects,
-            // 是否等待结果
-            wait_result = true,
+            // 是否等待结果（默认不等待，使用前端轮询）
+            wait_result = false,
         } = body;
 
         console.log(`[Vidu API] Mode: ${mode}, Model: ${model}`);

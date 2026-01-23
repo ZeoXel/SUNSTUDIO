@@ -292,8 +292,8 @@ export const multiframe = async (options: MultiframeOptions): Promise<string> =>
     throw new Error('Vidu API Key 未配置');
   }
 
-  if (!options.image_settings || options.image_settings.length < 1) {
-    throw new Error('智能多帧至少需要1个关键帧');
+  if (!options.image_settings || options.image_settings.length < 2) {
+    throw new Error('智能多帧至少需要2个关键帧');
   }
 
   if (options.image_settings.length > 9) {

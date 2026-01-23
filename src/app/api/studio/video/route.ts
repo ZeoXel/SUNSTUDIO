@@ -1,26 +1,36 @@
 /**
  * Studio 视频生成 API
  *
- * 使用统一的 provider 服务架构
- * 支持模型: Veo, Seedance
+ * 使用前端轮询模式，避免 Vercel serverless 超时
+ *
+ * POST - 创建任务，立即返回 taskId
+ * GET  - 查询任务状态
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateVideo, getVideoProviderId } from '@/services/providers';
+import { getVideoProviderId } from '@/services/providers';
 import * as veoService from '@/services/providers/veo';
+import * as seedanceService from '@/services/providers/seedance';
+import * as viduService from '@/services/providers/vidu';
 
+// Route Segment Config
+export const maxDuration = 60; // 创建任务只需要很短时间
+export const dynamic = 'force-dynamic';
+
+/**
+ * POST - 创建视频生成任务（立即返回 taskId，不等待完成）
+ */
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const { prompt, model, aspectRatio, duration, enhancePrompt, images, imageRoles, videoConfig, viduSubjects } = body;
 
-        console.log(`[Studio Video API] Received request:`, {
+        console.log(`[Studio Video API] Creating task:`, {
             model,
             aspectRatio,
             duration,
             imagesCount: images?.length || 0,
             imageRoles,
-            videoConfig,
             viduSubjectsCount: viduSubjects?.length || 0
         });
 
@@ -37,29 +47,110 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: `不支持的视频模型: ${model}` }, { status: 400 });
         }
 
-        console.log(`[Studio Video API] model: ${model}, provider: ${providerId}, images: ${images?.length || 0}, viduSubjects: ${viduSubjects?.length || 0}`);
+        let taskId: string;
+        const config = videoConfig || {};
 
-        const videoUrl = await generateVideo(
-            {
-                prompt,
-                model,
-                aspectRatio,
-                duration,
-                images,
-                imageRoles,
-                enhancePrompt,
-                videoConfig,  // 厂商扩展配置
-                viduSubjects, // Vidu 主体参考
-            },
-            (progress) => {
-                console.log(`[Studio Video API] Progress: ${progress}`);
+        // 根据 provider 创建任务
+        switch (providerId) {
+            case 'veo': {
+                taskId = await veoService.createTask({
+                    prompt,
+                    model: model as any,
+                    aspectRatio: aspectRatio as any,
+                    duration,
+                    enhancePrompt: config.enhance_prompt ?? enhancePrompt,
+                    images,
+                });
+                break;
             }
-        );
+
+            case 'seedance': {
+                taskId = await seedanceService.createTask({
+                    prompt,
+                    model,
+                    duration,
+                    aspectRatio,
+                    images,
+                    imageRoles,
+                    return_last_frame: config.return_last_frame,
+                    generate_audio: config.generate_audio,
+                    camera_fixed: config.camera_fixed,
+                    watermark: config.watermark,
+                    service_tier: config.service_tier,
+                    seed: config.seed,
+                });
+                break;
+            }
+
+            case 'vidu': {
+                // 自动判断生成模式
+                let mode: viduService.GenerationMode = 'text2video';
+
+                if (viduSubjects && viduSubjects.length > 0) {
+                    mode = 'reference';
+                    taskId = await viduService.reference2video({
+                        model: model as viduService.ViduModel,
+                        images: viduSubjects.flatMap((s: any) => s.images),
+                        prompt,
+                        duration,
+                        resolution: config.resolution as viduService.Resolution,
+                        aspect_ratio: aspectRatio as viduService.AspectRatio,
+                        movement_amplitude: config.movement_amplitude as viduService.MovementAmplitude,
+                        bgm: config.bgm,
+                        watermark: config.watermark,
+                    });
+                } else if (images && images.length >= 2 && imageRoles?.includes('first_frame') && imageRoles?.includes('last_frame')) {
+                    mode = 'start-end';
+                    taskId = await viduService.startEnd2video({
+                        model: model as viduService.ViduModel,
+                        images,
+                        prompt,
+                        duration,
+                        resolution: config.resolution as viduService.Resolution,
+                        movement_amplitude: config.movement_amplitude as viduService.MovementAmplitude,
+                        bgm: config.bgm,
+                        watermark: config.watermark,
+                    });
+                } else if (images && images.length > 0) {
+                    mode = 'img2video';
+                    taskId = await viduService.img2video({
+                        model: model as viduService.ViduModel,
+                        images,
+                        prompt,
+                        duration,
+                        resolution: config.resolution as viduService.Resolution,
+                        movement_amplitude: config.movement_amplitude as viduService.MovementAmplitude,
+                        watermark: config.watermark,
+                    });
+                } else {
+                    taskId = await viduService.text2video({
+                        model: model as viduService.ViduModel,
+                        prompt,
+                        duration,
+                        aspect_ratio: aspectRatio as viduService.AspectRatio,
+                        resolution: config.resolution as viduService.Resolution,
+                        movement_amplitude: config.movement_amplitude as viduService.MovementAmplitude,
+                        style: config.style as viduService.Style,
+                        bgm: config.bgm,
+                        watermark: config.watermark,
+                    });
+                }
+
+                console.log(`[Studio Video API] Vidu mode: ${mode}`);
+                break;
+            }
+
+            default:
+                return NextResponse.json({ error: `不支持的视频模型: ${model}` }, { status: 400 });
+        }
+
+        console.log(`[Studio Video API] Task created: ${taskId}, provider: ${providerId}`);
 
         return NextResponse.json({
             success: true,
-            videoUrl,
-            status: 'SUCCESS',
+            taskId,
+            provider: providerId,
+            status: 'PENDING',
         });
 
     } catch (error: any) {
@@ -71,19 +162,74 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// GET 方法用于查询任务状态 (仅支持 Veo)
+/**
+ * GET - 查询任务状态
+ */
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get('taskId');
+    const provider = searchParams.get('provider') as 'veo' | 'seedance' | 'vidu';
 
     if (!taskId) {
         return NextResponse.json({ error: 'taskId is required' }, { status: 400 });
     }
+    if (!provider) {
+        return NextResponse.json({ error: 'provider is required' }, { status: 400 });
+    }
 
     try {
-        const result = await veoService.queryTask(taskId);
-        return NextResponse.json(result);
+        let status: string;
+        let videoUrl: string | undefined;
+        let error: string | undefined;
+        let progress: string | undefined;
+
+        switch (provider) {
+            case 'veo': {
+                const result = await veoService.queryTask(taskId);
+                status = result.status;
+                videoUrl = result.data?.output;
+                error = result.fail_reason;
+                progress = result.progress;
+                break;
+            }
+
+            case 'seedance': {
+                const result = await seedanceService.queryTask(taskId);
+                // 映射状态
+                if (result.status === 'succeeded') status = 'SUCCESS';
+                else if (result.status === 'failed') status = 'FAILURE';
+                else status = 'IN_PROGRESS';
+                videoUrl = result.content?.video_url;
+                error = result.error?.message;
+                break;
+            }
+
+            case 'vidu': {
+                const result = await viduService.queryTask(taskId);
+                // 映射状态
+                if (result.state === 'success') status = 'SUCCESS';
+                else if (result.state === 'failed') status = 'FAILURE';
+                else status = 'IN_PROGRESS';
+                videoUrl = result.creations?.[0]?.url;
+                error = result.err_code;
+                break;
+            }
+
+            default:
+                return NextResponse.json({ error: `不支持的 provider: ${provider}` }, { status: 400 });
+        }
+
+        return NextResponse.json({
+            taskId,
+            provider,
+            status,
+            videoUrl,
+            error,
+            progress,
+        });
+
     } catch (error: any) {
+        console.error('[Studio Video API] Query error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

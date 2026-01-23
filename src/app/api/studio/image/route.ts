@@ -10,6 +10,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateImage } from '@/services/providers/image';
 import * as seedream from '@/services/providers/seedream';
 
+// Route Segment Config
+export const maxDuration = 60; // 图像生成通常较快
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();

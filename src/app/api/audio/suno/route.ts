@@ -11,6 +11,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as sunoService from '@/services/providers/suno';
 
+// Route Segment Config
+export const maxDuration = 60; // 创建任务只需要很短时间
+export const dynamic = 'force-dynamic';
+
 // POST: 提交生成任务
 export async function POST(request: NextRequest) {
     try {

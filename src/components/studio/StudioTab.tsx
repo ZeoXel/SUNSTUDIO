@@ -58,7 +58,7 @@ interface VideoGenResult {
   uris?: string[];
 }
 
-// 视频生成 (统一通过 API 路由)
+// 视频生成 (前端轮询模式，避免 Vercel serverless 超时)
 const generateVideo = async (
   prompt: string,
   model: string,
@@ -73,15 +73,12 @@ const generateVideo = async (
   let finalImageRoles: ('first_frame' | 'last_frame')[] | undefined;
 
   if (referenceImages && referenceImages.length > 0) {
-    // 首尾帧模式或多图模式
     finalImages = referenceImages;
     finalImageRoles = imageRoles;
   } else if (inputImageBase64) {
-    // 单图模式
     finalImages = [inputImageBase64];
-    finalImageRoles = undefined; // 单图模式不需要 roles
+    finalImageRoles = undefined;
   } else {
-    // 文生视频模式
     finalImages = undefined;
     finalImageRoles = undefined;
   }
@@ -105,32 +102,69 @@ const generateVideo = async (
     viduSubjects: options.viduSubjects,
   };
 
-  // 只有当 finalImages 存在时才添加 images 字段
   if (finalImages) {
     requestBody.images = finalImages;
   }
-
-  // 只有当 finalImageRoles 存在时才添加 imageRoles 字段
   if (finalImageRoles) {
     requestBody.imageRoles = finalImageRoles;
   }
 
-  const response = await fetch('/api/studio/video', {
+  // 1. 创建任务（立即返回 taskId）
+  const createResponse = await fetch('/api/studio/video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
   });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `API错误: ${response.status}`);
+  if (!createResponse.ok) {
+    const errorData = await createResponse.json().catch(() => ({}));
+    throw new Error(errorData.error || `API错误: ${createResponse.status}`);
   }
-  const result = await response.json();
-  return {
-    uri: result.videoUrl,
-    isFallbackImage: false,
-    videoMetadata: { taskId: result.taskId },
-    uris: [result.videoUrl],
-  };
+  const createResult = await createResponse.json();
+  const { taskId, provider } = createResult;
+
+  console.log(`[generateVideo] Task created: ${taskId}, provider: ${provider}`);
+
+  // 2. 前端轮询等待结果（最多 10 分钟）
+  const maxAttempts = 120;
+  const pollInterval = 5000; // 5 秒
+
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+    try {
+      const queryResponse = await fetch(`/api/studio/video?taskId=${taskId}&provider=${provider}`);
+      if (!queryResponse.ok) {
+        console.warn(`[generateVideo] Query failed (attempt ${i + 1}):`, queryResponse.status);
+        continue;
+      }
+
+      const queryResult = await queryResponse.json();
+      console.log(`[generateVideo] Poll ${i + 1}/${maxAttempts}:`, queryResult.status);
+
+      if (queryResult.status === 'SUCCESS') {
+        if (!queryResult.videoUrl) {
+          throw new Error('视频生成成功但未返回 URL');
+        }
+        return {
+          uri: queryResult.videoUrl,
+          isFallbackImage: false,
+          videoMetadata: { taskId },
+          uris: [queryResult.videoUrl],
+        };
+      }
+
+      if (queryResult.status === 'FAILURE') {
+        throw new Error(queryResult.error || '视频生成失败');
+      }
+
+      // IN_PROGRESS - 继续轮询
+    } catch (err: any) {
+      // 查询错误，继续尝试
+      console.warn(`[generateVideo] Query error (attempt ${i + 1}):`, err.message);
+    }
+  }
+
+  throw new Error('视频生成超时（10分钟）');
 };
 import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';

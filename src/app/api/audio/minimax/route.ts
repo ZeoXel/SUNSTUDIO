@@ -11,6 +11,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as minimaxService from '@/services/providers/minimax';
 
+// Route Segment Config
+export const maxDuration = 60; // 语音合成通常较快
+export const dynamic = 'force-dynamic';
+
 // POST: 语音合成
 export async function POST(request: NextRequest) {
     try {
