@@ -96,6 +96,7 @@ export const generateVideo = async (
         prompt: options.prompt,
         model: options.model,
         duration: options.duration,
+        aspectRatio: options.aspectRatio,  // 画面比例
         images: options.images,
         imageRoles: options.imageRoles,
         return_last_frame: config.return_last_frame,

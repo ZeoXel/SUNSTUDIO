@@ -102,6 +102,65 @@ export const urlToBase64 = async (url: string): Promise<string> => {
 };
 
 /**
+ * 压缩图片 Base64
+ * 用于避免 Vercel 请求体大小限制 (4.5MB)
+ */
+export const compressImageBase64 = async (
+  base64: string,
+  options: { maxWidth?: number; maxHeight?: number; quality?: number } = {}
+): Promise<string> => {
+  const { maxWidth = 1280, maxHeight = 720, quality = 0.8 } = options;
+
+  // 检查是否为 base64 格式
+  if (!base64.startsWith('data:image')) {
+    return base64; // 如果是 URL 则直接返回
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // 计算缩放比例
+      if (width > maxWidth || height > maxHeight) {
+        const scale = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject(new Error('Canvas context failed'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // 使用 JPEG 格式压缩（比 PNG 更小）
+      const compressed = canvas.toDataURL('image/jpeg', quality);
+      console.log(`[CompressImage] ${Math.round(base64.length / 1024)}KB -> ${Math.round(compressed.length / 1024)}KB`);
+      resolve(compressed);
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = base64;
+  });
+};
+
+/**
+ * 批量压缩图片
+ */
+export const compressImages = async (
+  images: string[],
+  options?: { maxWidth?: number; maxHeight?: number; quality?: number }
+): Promise<string[]> => {
+  return Promise.all(images.map(img => compressImageBase64(img, options)));
+};
+
+/**
  * 从视频提取最后一帧
  */
 export const extractLastFrame = (videoSrc: string): Promise<string> => {

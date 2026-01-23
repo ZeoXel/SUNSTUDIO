@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
             'prod-ss-vidu.s3.cn-northwest-1.amazonaws.com.cn', // Vidu S3
             'cos.lsaigc.com', // Our COS domain
             'lsjx-1354453097.cos.ap-beijing.myqcloud.com', // COS original domain
+            'midjourney-plus.oss-us-west-1.aliyuncs.com', // VEO video output
+            'oss-us-west-1.aliyuncs.com', // Aliyun OSS general
         ];
 
         const urlObj = new URL(url);

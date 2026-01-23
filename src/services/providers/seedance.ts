@@ -20,7 +20,8 @@ const getVolcengineConfig = () => {
 export interface SeedanceGenerateOptions {
   prompt: string;
   model?: string;
-  duration?: number;      // ⚠️ 当前 API 不支持自定义 duration，使用模型默认时长
+  duration?: number;      // 4-12 秒, -1 表示自动
+  aspectRatio?: string;   // 画面比例: 16:9, 9:16, 1:1, 4:3, 3:4, 21:9
   images?: string[];      // 参考图
   imageRoles?: ('first_frame' | 'last_frame')[];  // 首尾帧角色
   // 扩展配置
@@ -54,10 +55,36 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
     throw new Error('火山引擎 API Key 未配置');
   }
 
-  // 注意：Seedance API 当前不支持通过 --dur 参数设置 duration
-  // API 会使用模型默认的视频时长
-  // 如果将来需要支持自定义 duration，需要查阅最新的 API 文档
-  const finalPrompt = options.prompt;
+  // 验证并修正 duration（Seedance 1.5 Pro 支持 4-12 秒，或 -1 自动）
+  let validDuration = options.duration;
+  if (validDuration !== undefined && validDuration !== -1) {
+    if (validDuration < 4) {
+      console.warn(`[Seedance] Duration ${validDuration} is too short, using minimum 4s`);
+      validDuration = 4;
+    } else if (validDuration > 12) {
+      console.warn(`[Seedance] Duration ${validDuration} is too long, using maximum 12s`);
+      validDuration = 12;
+    }
+  }
+
+  // 将参数追加到提示词
+  let finalPrompt = options.prompt;
+  const params: string[] = [];
+
+  // 时长参数 --dur
+  if (validDuration && validDuration > 0) {
+    params.push(`--dur ${validDuration}`);
+  }
+
+  // 画面比例参数 --rt (ratio)
+  if (options.aspectRatio) {
+    params.push(`--rt ${options.aspectRatio}`);
+  }
+
+  // 拼接所有参数
+  if (params.length > 0) {
+    finalPrompt = `${options.prompt} ${params.join(' ')}`;
+  }
 
   // 构建请求内容
   const content: any[] = [{ type: 'text', text: finalPrompt }];

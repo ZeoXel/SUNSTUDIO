@@ -62,39 +62,73 @@ interface VideoGenResult {
   uris?: string[];
 }
 
-// 视频生成 (统一通过 API 路由)
-const generateVideo = async (
+// 视频任务管理器 - 支持持久化和页面刷新后恢复
+import * as videoTaskManager from '@/services/videoTaskManager';
+
+// 视频生成 (前端轮询模式，支持页面刷新恢复)
+const generateVideoWithPolling = async (
+  nodeId: string,
   prompt: string,
   model: string,
   options: { aspectRatio?: string; count?: number; generationMode?: any; resolution?: string; duration?: number; videoConfig?: any; viduSubjects?: { id: string; images: string[] }[] } = {},
   inputImageBase64?: string | null,
   _videoInput?: any,
   referenceImages?: string[],
-  imageRoles?: string[]
+  imageRoles?: ('first_frame' | 'last_frame')[]
 ): Promise<VideoGenResult> => {
-  const response = await fetch('/api/studio/video', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      model,
-      aspectRatio: options.aspectRatio || '16:9',
-      duration: options.duration,
-      images: inputImageBase64 ? [inputImageBase64] : referenceImages,
-      imageRoles,
-      videoConfig: options.videoConfig,
-      viduSubjects: options.viduSubjects, // Vidu 主体参考
-    }),
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `API错误: ${response.status}`);
+  // 优先使用 referenceImages（首尾帧模式），否则使用单张输入图
+  let finalImages: string[] | undefined;
+  let finalImageRoles: ('first_frame' | 'last_frame')[] | undefined;
+
+  if (referenceImages && referenceImages.length > 0) {
+    finalImages = referenceImages;
+    finalImageRoles = imageRoles;
+  } else if (inputImageBase64) {
+    finalImages = [inputImageBase64];
+    finalImageRoles = undefined;
+  } else {
+    finalImages = undefined;
+    finalImageRoles = undefined;
   }
-  const result = await response.json();
+
+  const requestBody: any = {
+    prompt,
+    model,
+    aspectRatio: options.aspectRatio || '16:9',
+    duration: options.duration,
+    videoConfig: options.videoConfig,
+    viduSubjects: options.viduSubjects,
+  };
+
+  if (finalImages) {
+    requestBody.images = finalImages;
+  }
+  if (finalImageRoles) {
+    requestBody.imageRoles = finalImageRoles;
+  }
+
+  // 1. 创建任务并持久化
+  const task = await videoTaskManager.createVideoTask(nodeId, requestBody);
+  console.log(`[generateVideo] Task created and saved: ${task.taskId}, provider: ${task.provider}`);
+
+  // 2. 轮询等待结果
+  const result = await videoTaskManager.pollTask(
+    task,
+    (status) => console.log(`[generateVideo] Status: ${status}`),
+  );
+
+  if (!result || result.status !== 'SUCCESS') {
+    throw new Error(result?.error || '视频生成失败');
+  }
+
+  if (!result.videoUrl) {
+    throw new Error('视频生成成功但未返回 URL');
+  }
+
   return {
     uri: result.videoUrl,
     isFallbackImage: false,
-    videoMetadata: { taskId: result.taskId },
+    videoMetadata: { taskId: task.taskId },
     uris: [result.videoUrl],
   };
 };
@@ -709,6 +743,59 @@ export default function StudioTab() {
         saveSubjects(subjects);
     }, [subjects, isLoaded]);
 
+    // 恢复待处理的视频任务轮询
+    useEffect(() => {
+        if (!isLoaded) return;
+
+        const pendingTasks = videoTaskManager.getPendingTasks();
+        if (pendingTasks.length === 0) return;
+
+        console.log(`[VideoTaskRestore] Found ${pendingTasks.length} pending video tasks, resuming polling...`);
+
+        pendingTasks.forEach(task => {
+            // 检查节点是否存在
+            const node = nodesRef.current.find(n => n.id === task.nodeId);
+            if (!node) {
+                console.log(`[VideoTaskRestore] Node ${task.nodeId} not found, removing task ${task.taskId}`);
+                videoTaskManager.removeTask(task.taskId);
+                return;
+            }
+
+            // 设置节点为工作状态
+            setNodes(prev => prev.map(n =>
+                n.id === task.nodeId ? { ...n, status: NodeStatus.WORKING } : n
+            ));
+
+            // 恢复轮询
+            videoTaskManager.pollTask(
+                task,
+                (status) => {
+                    console.log(`[VideoTaskRestore] Task ${task.taskId} status: ${status}`);
+                },
+                (result) => {
+                    console.log(`[VideoTaskRestore] Task ${task.taskId} completed:`, result.videoUrl);
+                    // 更新节点
+                    handleNodeUpdate(task.nodeId, {
+                        videoUri: result.videoUrl,
+                        videoMetadata: { taskId: task.taskId },
+                        videoUris: result.videoUrl ? [result.videoUrl] : undefined,
+                        model: task.model,
+                        aspectRatio: task.aspectRatio,
+                    });
+                    setNodes(prev => prev.map(n =>
+                        n.id === task.nodeId ? { ...n, status: NodeStatus.SUCCESS } : n
+                    ));
+                },
+                (error) => {
+                    console.error(`[VideoTaskRestore] Task ${task.taskId} failed:`, error);
+                    handleNodeUpdate(task.nodeId, { error });
+                    setNodes(prev => prev.map(n =>
+                        n.id === task.nodeId ? { ...n, status: NodeStatus.ERROR } : n
+                    ));
+                }
+            );
+        });
+    }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const getApproxNodeHeight = (node: AppNode) => {
         if (node.height) return node.height;
@@ -2123,7 +2210,11 @@ export default function StudioTab() {
                         console.log(`[VideoGen] viduSubjects:`, JSON.stringify(viduSubjects.map(s => ({ id: s.id, imageCount: s.images.length }))));
                     }
 
-                    const res = await generateVideo(
+                    // 确定目标节点 ID（新节点或当前节点）
+                    const targetNodeId = shouldCreateNewNode && factoryNodeId ? factoryNodeId : id;
+
+                    const res = await generateVideoWithPolling(
+                        targetNodeId,
                         strategy.finalPrompt,
                         usedModel,
                         {
@@ -2281,7 +2372,11 @@ export default function StudioTab() {
                     // Vidu 主体参考模式：不使用首尾帧数据，避免冲突
                     const useViduSubjectMode = isViduModel && viduSubjects && viduSubjects.length > 0;
 
-                    const res = await generateVideo(
+                    // 确定目标节点 ID（新节点或当前节点）
+                    const targetNodeId = shouldCreateNewNode && newFactoryNodeId ? newFactoryNodeId : id;
+
+                    const res = await generateVideoWithPolling(
+                        targetNodeId,
                         strategy.finalPrompt,
                         usedModel,
                         {
@@ -2464,10 +2559,9 @@ export default function StudioTab() {
                 // 获取相机参数和画面比例
                 const cameraParams = node.data.cameraParams || { azimuth: 0, elevation: 0, distance: 1.0 };
                 const aspectRatio = node.data.aspectRatio || '1:1';
-                const usedModel = node.data.model || 'nano-banana';
+                const usedModel = node.data.model || 'doubao-seedream-4-5-251128';
 
-                // 生成视角描述提示词
-                // generateFullPrompt: 完整提示词，用于AI调用和UI显示
+                // 生成视角描述提示词（统一的运镜提示词，不区分主体/场景）
                 const { generateFullPrompt } = await import('@/services/camera3d');
                 const cameraPrompt = generateFullPrompt(cameraParams);
 
@@ -2846,7 +2940,7 @@ export default function StudioTab() {
             title: '3D 运镜',
             status: NodeStatus.IDLE,
             data: {
-                model: savedConfig.model || 'nano-banana',
+                model: savedConfig.model || 'doubao-seedream-4-5-251128',
                 aspectRatio: savedConfig.aspectRatio || '16:9',
             },
             inputs: [sourceNodeId]
@@ -3923,7 +4017,7 @@ export default function StudioTab() {
                                     if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
                                     if (nodeType === NodeType.VIDEO_GENERATOR) return 'veo3.1';
                                     if (nodeType === NodeType.VIDEO_FACTORY) return 'veo3.1';
-                                    if (nodeType === NodeType.IMAGE_3D_CAMERA) return 'nano-banana';
+                                    if (nodeType === NodeType.IMAGE_3D_CAMERA) return 'doubao-seedream-4-5-251128';
                                     return undefined;
                                 };
 
