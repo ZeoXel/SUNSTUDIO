@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
             'ark-content-generation-cn-beijing.tos-cn-beijing.volces.com',
             'ark-content-generation-v2-cn-beijing.tos-cn-beijing.volces.com',
             'prod-ss-vidu.s3.cn-northwest-1.amazonaws.com.cn', // Vidu S3
+            'midjourney-plus.oss-us-west-1.aliyuncs.com', // VEO video output
+            'oss-us-west-1.aliyuncs.com', // Aliyun OSS general
         ];
 
         const urlObj = new URL(url);

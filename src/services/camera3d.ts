@@ -60,69 +60,109 @@ export function generateCameraPrompt(params: CameraParams): string {
 
 /**
  * 生成指令式提示词（用于通用图像模型）
- * 参考 Qwen-Edit LoRA 的简洁指令风格
+ *
+ * 使用标准摄影视角术语，基于业界最佳实践
+ * 参考：front view, side view, 3/4 view, back view, viewed from, seen from
+ *
+ * 坐标系：
+ * - azimuth 0° = 正前方 front view
+ * - azimuth 45° = 3/4 view from left
+ * - azimuth 90° = left side view
+ * - azimuth 180° = back view
+ * - azimuth 270° = right side view
+ * - azimuth 315° = 3/4 view from right
  */
 export function generateFullPrompt(params: CameraParams, customPrompt?: string): string {
   const az = ((params.azimuth % 360) + 360) % 360;
   const el = params.elevation;
   const dist = params.distance;
 
-  const commands: string[] = [];
+  const parts: string[] = [];
 
-  // 1. 水平旋转指令 - 使用精确角度
-  if (az > 15 && az <= 345) {
-    if (az <= 180) {
-      // 相机向右移动 = 看到主体左侧
-      commands.push(`Rotate the camera ${Math.round(az)}° to the right to show the subject's left side`);
+  // 1. 水平视角描述 - 使用标准摄影术语
+  // 注意：azimuth 增加 = 相机顺时针移动 = 看到的是右侧内容
+  let viewAngle = '';
+  if (az <= 22 || az > 337) {
+    viewAngle = 'front view';
+  } else if (az <= 67) {
+    viewAngle = '3/4 view from the right';
+  } else if (az <= 112) {
+    viewAngle = 'right side view';
+  } else if (az <= 157) {
+    viewAngle = 'back 3/4 view from the right';
+  } else if (az <= 202) {
+    viewAngle = 'back view';
+  } else if (az <= 247) {
+    viewAngle = 'back 3/4 view from the left';
+  } else if (az <= 292) {
+    viewAngle = 'left side view';
+  } else {
+    viewAngle = '3/4 view from the left';
+  }
+
+  // 2. 垂直角度描述
+  let verticalAngle = '';
+  if (el > 50) {
+    verticalAngle = 'bird\'s eye view';
+  } else if (el > 30) {
+    verticalAngle = 'high angle';
+  } else if (el > 10) {
+    verticalAngle = 'slightly elevated angle';
+  } else if (el >= -10) {
+    verticalAngle = 'eye level';
+  } else if (el >= -20) {
+    verticalAngle = 'low angle';
+  } else {
+    verticalAngle = 'worm\'s eye view';
+  }
+
+  // 3. 景别描述
+  let shotType = '';
+  if (dist < 0.7) {
+    shotType = 'extreme close-up';
+  } else if (dist < 0.85) {
+    shotType = 'close-up shot';
+  } else if (dist <= 1.15) {
+    shotType = 'medium shot';
+  } else if (dist <= 1.35) {
+    shotType = 'medium wide shot';
+  } else {
+    shotType = 'wide shot';
+  }
+
+  // 组合视角描述
+  // 格式: "viewed from [angle], [vertical], [shot type]"
+  if (viewAngle !== 'front view' || verticalAngle !== 'eye level') {
+    if (verticalAngle === 'eye level') {
+      parts.push(`${viewAngle}`);
+    } else if (viewAngle === 'front view') {
+      parts.push(`${verticalAngle}`);
     } else {
-      // 相机向左移动 = 看到主体右侧
-      const leftAngle = 360 - az;
-      commands.push(`Rotate the camera ${Math.round(leftAngle)}° to the left to show the subject's right side`);
+      parts.push(`${viewAngle}, ${verticalAngle}`);
     }
   }
 
-  // 2. 垂直俯仰指令
-  if (el > 10) {
-    if (el > 50) {
-      commands.push('Move the camera to a top-down bird\'s eye view');
-    } else if (el > 30) {
-      commands.push(`Tilt the camera down ${Math.round(el)}° for a high angle shot`);
-    } else {
-      commands.push(`Tilt the camera down ${Math.round(el)}° for a slightly elevated view`);
-    }
-  } else if (el < -10) {
-    if (el < -25) {
-      commands.push('Move the camera to a dramatic low angle worm\'s eye view');
-    } else {
-      commands.push(`Tilt the camera up ${Math.round(Math.abs(el))}° for a low angle shot`);
-    }
+  // 添加景别（如果不是默认的中景）
+  if (shotType !== 'medium shot') {
+    parts.push(shotType);
   }
 
-  // 3. 距离/景别指令
-  if (dist < 0.8) {
-    commands.push('Move the camera forward for an extreme close-up');
-  } else if (dist < 0.95) {
-    commands.push('Move the camera closer for a close-up shot');
-  } else if (dist > 1.25) {
-    commands.push('Move the camera back for a wide shot');
+  // 构建最终提示词
+  let prompt = '';
+  if (parts.length === 0) {
+    prompt = 'Same angle and framing';
+  } else {
+    prompt = parts.join(', ');
   }
 
-  // 如果没有任何变化，保持原样
-  if (commands.length === 0) {
-    commands.push('Keep the current frontal eye-level view');
-  }
-
-  // 组合指令
-  const cameraInstructions = commands.join('. ');
-
-  // 构建完整提示词
-  const basePrompt = `${cameraInstructions}. Maintain the subject's identity, appearance, and all visual details while changing only the viewing angle.`;
+  // 添加保持一致性的说明
+  const finalPrompt = `${prompt}. Maintain all visual details, style, and lighting.`;
 
   if (customPrompt && customPrompt.trim()) {
-    return `${basePrompt} ${customPrompt.trim()}`;
+    return `${finalPrompt} ${customPrompt.trim()}`;
   }
 
-  return basePrompt;
+  return finalPrompt;
 }
 
 /**

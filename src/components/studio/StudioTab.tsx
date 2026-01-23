@@ -2442,10 +2442,9 @@ export default function StudioTab() {
                 // 获取相机参数和画面比例
                 const cameraParams = node.data.cameraParams || { azimuth: 0, elevation: 0, distance: 1.0 };
                 const aspectRatio = node.data.aspectRatio || '1:1';
-                const usedModel = node.data.model || 'nano-banana';
+                const usedModel = node.data.model || 'doubao-seedream-4-5-251128';
 
-                // 生成视角描述提示词
-                // generateFullPrompt: 完整提示词，用于AI调用和UI显示
+                // 生成视角描述提示词（统一的运镜提示词，不区分主体/场景）
                 const { generateFullPrompt } = await import('@/services/camera3d');
                 const cameraPrompt = generateFullPrompt(cameraParams);
 
@@ -2814,7 +2813,7 @@ export default function StudioTab() {
             title: '3D 运镜',
             status: NodeStatus.IDLE,
             data: {
-                model: savedConfig.model || 'nano-banana',
+                model: savedConfig.model || 'doubao-seedream-4-5-251128',
                 aspectRatio: savedConfig.aspectRatio || '16:9',
             },
             inputs: [sourceNodeId]
@@ -3891,7 +3890,7 @@ export default function StudioTab() {
                                     if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
                                     if (nodeType === NodeType.VIDEO_GENERATOR) return 'veo3.1';
                                     if (nodeType === NodeType.VIDEO_FACTORY) return 'veo3.1';
-                                    if (nodeType === NodeType.IMAGE_3D_CAMERA) return 'nano-banana';
+                                    if (nodeType === NodeType.IMAGE_3D_CAMERA) return 'doubao-seedream-4-5-251128';
                                     return undefined;
                                 };
 

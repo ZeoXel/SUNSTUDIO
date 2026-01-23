@@ -1182,8 +1182,8 @@ const NodeComponent: React.FC<NodeProps> = ({
                 { l: 'Nano Pro', v: 'nano-banana-pro' },
                 { l: 'Seedream', v: 'doubao-seedream-4-5-251128' },
             ];
-            const currentModel = node.data.model || 'nano-banana';
-            const currentModelLabel = camera3dModels.find(m => m.v === currentModel)?.l || 'Nano Banana';
+            const currentModel = node.data.model || 'doubao-seedream-4-5-251128';
+            const currentModelLabel = camera3dModels.find(m => m.v === currentModel)?.l || 'Seedream';
             const aspectRatios = IMAGE_ASPECT_RATIOS;
             const currentRatio = node.data.aspectRatio || '1:1';
             const hasInputImage = !!(inputAssets?.[0]?.src || node.data.image);
