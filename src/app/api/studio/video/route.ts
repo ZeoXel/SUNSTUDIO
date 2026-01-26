@@ -4,7 +4,7 @@
  * 使用前端轮询模式，避免 Vercel serverless 超时
  *
  * POST - 创建任务，立即返回 taskId
- * GET  - 查询任务状态
+ * GET  - 查询任务状态，成功后自动上传到 COS 存储
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,6 +12,7 @@ import { getVideoProviderId } from '@/services/providers';
 import * as veoService from '@/services/providers/veo';
 import * as seedanceService from '@/services/providers/seedance';
 import * as viduService from '@/services/providers/vidu';
+import { smartUploadVideoServer, buildMediaPathServer } from '@/services/cosStorageServer';
 
 // Route Segment Config
 export const maxDuration = 60; // 创建任务只需要很短时间
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET - 查询任务状态
+ * GET - 查询任务状态，成功后自动上传到 COS
  */
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -224,6 +225,20 @@ export async function GET(request: NextRequest) {
 
             default:
                 return NextResponse.json({ error: `不支持的 provider: ${provider}` }, { status: 400 });
+        }
+
+        // 如果任务成功且有视频 URL，上传到 COS 存储
+        if (status === 'SUCCESS' && videoUrl) {
+            try {
+                const uploadPath = buildMediaPathServer('videos');
+                console.log(`[Studio Video API] Uploading video to COS (${uploadPath})...`);
+                const cosUrl = await smartUploadVideoServer(videoUrl, uploadPath);
+                console.log(`[Studio Video API] Video uploaded: ${cosUrl}`);
+                videoUrl = cosUrl; // 使用 COS URL
+            } catch (uploadError: any) {
+                console.warn(`[Studio Video API] COS upload failed, using original URL:`, uploadError.message);
+                // 上传失败时使用原始 URL
+            }
         }
 
         return NextResponse.json({

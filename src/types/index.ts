@@ -34,8 +34,10 @@ export type VideoGenerationMode = 'DEFAULT' | 'CONTINUE' | 'CUT' | 'FIRST_LAST_F
 /** 主体图片 - 单张去背景后的主体图 */
 export interface SubjectImage {
   id: string;               // 图片唯一ID
-  base64: string;           // 去背景后的图片 (PNG with transparency)
-  originalBase64?: string;  // 原始图片 (用于参考)
+  base64?: string;          // 去背景后的图片 (PNG with transparency) [废弃，使用 url]
+  url?: string;             // COS URL (优先使用)
+  originalBase64?: string;  // 原始图片 [废弃，使用 originalUrl]
+  originalUrl?: string;     // 原始图片 COS URL
   angle?: 'front' | 'side' | 'back' | '3/4' | string;  // 角度标签
   createdAt: number;
 }
@@ -46,7 +48,8 @@ export interface Subject {
   name: string;             // 主体名称 (如 "机器人角色A")
   category?: string;        // 分类: 'character' | 'object' | 'animal' | 'vehicle' | 自定义
   description?: string;     // 描述信息
-  thumbnail: string;        // 缩略图 (Base64, 取自第一张图)
+  thumbnail?: string;       // 缩略图 [废弃，使用 thumbnailUrl]
+  thumbnailUrl?: string;    // 缩略图 COS URL (优先使用)
   images: SubjectImage[];   // 多角度图片集合 (1-3张最优, Vidu最多3张)
   voiceId?: string;         // 关联的音色ID (用于 Vidu 音视频直出)
   tags?: string[];          // 自定义标签
@@ -57,7 +60,8 @@ export interface Subject {
 /** 主体选择结果 - 用于生成时传递 */
 export interface SelectedSubject {
   id: string;
-  images: string[];         // 选中的图片 Base64 数组
+  images?: string[];        // 选中的图片 Base64 数组 [废弃，使用 imageUrls]
+  imageUrls?: string[];     // 选中的图片 COS URL 数组 (优先使用)
   voiceId?: string;
 }
 

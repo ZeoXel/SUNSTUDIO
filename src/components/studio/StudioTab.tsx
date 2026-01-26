@@ -15,6 +15,7 @@ import { AppNode, NodeType, NodeStatus, Connection, ContextMenuState, Group, Wor
 import { SubjectEditor } from './subject';
 import { urlToBase64 } from '@/services/providers';
 import { parseSubjectReferences, cleanSubjectReferences, getPrimaryImage } from '@/services/subjectService';
+import { getSubjectImageSrc } from '@/services/cosStorage';
 
 // ==================== API 调用层 ====================
 
@@ -2165,7 +2166,7 @@ export default function StudioTab() {
                             console.log(`[VideoGen] Found ${subjectRefs.length} subject references for Vidu:`, subjectRefs.map(s => s.name));
                             viduSubjects = subjectRefs.map(ref => ({
                                 id: ref.name, // 使用名称作为 ID，用于 prompt 中的 @引用
-                                images: ref.subject.images.map(img => img.base64).slice(0, 3), // Vidu 最多支持 3 张图片
+                                images: ref.subject.images.map(img => getSubjectImageSrc(img)).filter(Boolean).slice(0, 3) as string[], // Vidu 最多支持 3 张图片
                             }));
                             // 保留 prompt 中的 @主体名称，Vidu API 需要用它来关联
                             processedPrompt = prompt;
@@ -2324,7 +2325,7 @@ export default function StudioTab() {
                             console.log(`[VideoFactory] Found ${subjectRefs.length} subject references for Vidu:`, subjectRefs.map(s => s.name));
                             viduSubjects = subjectRefs.map(ref => ({
                                 id: ref.name,
-                                images: ref.subject.images.map(img => img.base64).slice(0, 3),
+                                images: ref.subject.images.map(img => getSubjectImageSrc(img)).filter(Boolean).slice(0, 3) as string[],
                             }));
                             processedPrompt = prompt;
                         } else {

@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
             'prod-ss-vidu.s3.cn-northwest-1.amazonaws.com.cn', // Vidu S3
             'midjourney-plus.oss-us-west-1.aliyuncs.com', // VEO video output
             'oss-us-west-1.aliyuncs.com', // Aliyun OSS general
+            'cos.lsaigc.com', // 腾讯云 COS 存储
         ];
 
         const urlObj = new URL(url);

@@ -20,14 +20,15 @@ export const isVolcengineUrl = (url: string): boolean => {
     }
 };
 
-// Helper: Check if URL needs proxy (includes Aliyun OSS for Seedream)
+// Helper: Check if URL needs proxy (includes Aliyun OSS, COS without CORS)
 export const needsProxy = (url: string): boolean => {
     if (!url || !url.startsWith('http')) return false;
     try {
         const urlObj = new URL(url);
         const hostname = urlObj.hostname;
         return isVolcengineUrl(url) ||
-               hostname.includes('aliyuncs.com'); // Aliyun OSS (Seedream)
+               hostname.includes('aliyuncs.com') ||  // Aliyun OSS (Seedream)
+               hostname.includes('cos.lsaigc.com'); // Our COS (until CORS is configured)
     } catch {
         return false;
     }

@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { User, Plus } from 'lucide-react';
 import type { Subject, SelectedSubject } from '@/types';
+import { getSubjectImageSrc } from '@/services/cosStorage';
 import { SubjectCard } from './SubjectCard';
 
 interface SubjectPickerProps {
@@ -29,10 +30,11 @@ export const SubjectPicker: React.FC<SubjectPickerProps> = ({
       // 取消选择
       onChange(selected.filter(s => s.id !== subject.id));
     } else if (selected.length < maxSubjects) {
-      // 添加选择
+      // 添加选择（优先使用 URL，兼容 Base64）
+      const imageUrls = subject.images.map(img => getSubjectImageSrc(img));
       onChange([...selected, {
         id: subject.id,
-        images: subject.images.map(img => img.base64),
+        imageUrls,
         voiceId: subject.voiceId,
       }]);
     }
