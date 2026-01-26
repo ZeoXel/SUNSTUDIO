@@ -1383,12 +1383,14 @@ const NodeComponent: React.FC<NodeProps> = ({
                         reader.readAsDataURL(file);
                     }));
                     Promise.all(readers).then(newItems => {
+                        // 追加模式：只传新帧，handleNodeUpdate 会自动合并到现有帧后面（避免闭包陷阱）
                         onUpdate(node.id, {
                             multiFrameData: {
-                                frames: [...frames, ...newItems].slice(0, 10),
+                                frames: newItems,
                                 viduModel,
                                 viduResolution,
-                                taskId: node.data.multiFrameData?.taskId
+                                taskId: node.data.multiFrameData?.taskId,
+                                _appendFrames: true  // 标记为追加模式
                             }
                         });
                     });

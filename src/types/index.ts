@@ -149,6 +149,7 @@ export interface AppNode {
       viduModel?: 'viduq2-turbo' | 'viduq2-pro';  // Vidu 模型
       viduResolution?: '540p' | '720p' | '1080p'; // Vidu 分辨率
       taskId?: string;              // Vidu 任务 ID (用于轮询)
+      _appendFrames?: boolean;      // 内部标志：追加模式（避免闭包陷阱）
     };
 
     // First-Last Frame (首尾帧视频生成)

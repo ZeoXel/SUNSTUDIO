@@ -1863,13 +1863,37 @@ export default function StudioTab() {
         setNodes(prev => {
             const newNodes = prev.map(n => {
                 if (n.id === id) {
-                    // 深度合并 firstLastFrameData（避免快速连续上传时丢失数据）
+                    // 深度合并 firstLastFrameData 和 multiFrameData（避免快速连续上传时丢失数据）
                     const mergedData = { ...n.data, ...data };
                     if (data.firstLastFrameData) {
                         mergedData.firstLastFrameData = {
                             ...n.data.firstLastFrameData,
                             ...data.firstLastFrameData
                         };
+                    }
+                    // 深度合并 multiFrameData - 支持追加和替换两种模式
+                    if (data.multiFrameData) {
+                        const existingFrames = n.data.multiFrameData?.frames || [];
+                        const newFrames = data.multiFrameData.frames || [];
+                        let finalFrames: any[];
+
+                        // 如果标记为追加模式，将新帧添加到现有帧后面
+                        if (data.multiFrameData._appendFrames) {
+                            const existingIds = new Set(existingFrames.map((f: any) => f.id));
+                            const trulyNewFrames = newFrames.filter((f: any) => !existingIds.has(f.id));
+                            finalFrames = [...existingFrames, ...trulyNewFrames].slice(0, 10);
+                        } else {
+                            // 替换模式：直接使用新帧数组
+                            finalFrames = newFrames;
+                        }
+
+                        mergedData.multiFrameData = {
+                            ...n.data.multiFrameData,
+                            ...data.multiFrameData,
+                            frames: finalFrames
+                        };
+                        // 清除内部标志
+                        delete mergedData.multiFrameData._appendFrames;
                     }
                     const updated = { ...n, data: mergedData, title: title || n.title };
                     if (size) { if (size.width) updated.width = size.width; if (size.height) updated.height = size.height; }
@@ -2570,9 +2594,35 @@ export default function StudioTab() {
 
             } else if (node.type === NodeType.MULTI_FRAME_VIDEO) {
                 // 智能多帧视频生成
-                const frames = node.data.multiFrameData?.frames || [];
+                let frames = node.data.multiFrameData?.frames || [];
+
+                // 如果节点内没有帧，从上游输入节点收集图片作为帧
+                if (frames.length === 0 && inputs.length > 0) {
+                    const inputImages: string[] = [];
+                    inputs.forEach(n => {
+                        if (n?.data.image) inputImages.push(n.data.image);
+                    });
+
+                    // 将输入图片转换为帧格式
+                    frames = inputImages.map((src, index) => ({
+                        id: `mf-input-${Date.now()}-${index}`,
+                        src,
+                        transition: { duration: 4, prompt: '' }
+                    }));
+
+                    // 保存到节点数据
+                    if (frames.length > 0) {
+                        handleNodeUpdate(id, {
+                            multiFrameData: {
+                                ...node.data.multiFrameData,
+                                frames,
+                            }
+                        });
+                    }
+                }
+
                 if (frames.length < 2) {
-                    throw new Error('智能多帧至少需要2张关键帧');
+                    throw new Error('智能多帧至少需要2张关键帧（请上传图片或连接图片节点）');
                 }
 
                 const viduConfig: ViduMultiFrameConfig = {
