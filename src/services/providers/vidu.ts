@@ -292,12 +292,18 @@ export const multiframe = async (options: MultiframeOptions): Promise<string> =>
     throw new Error('Vidu API Key 未配置');
   }
 
-  if (!options.image_settings || options.image_settings.length < 2) {
-    throw new Error('智能多帧至少需要2个关键帧');
+  if (!options.start_image) {
+    throw new Error('智能多帧缺少首帧图片 (start_image)');
+  }
+
+  // image_settings 包含除首帧外的所有关键帧
+  // 2 张图片 = 1 start_image + 1 image_setting
+  if (!options.image_settings || options.image_settings.length < 1) {
+    throw new Error('智能多帧至少需要2张图片 (1 start_image + 1 image_setting)');
   }
 
   if (options.image_settings.length > 9) {
-    throw new Error('智能多帧最多支持9个关键帧');
+    throw new Error('智能多帧最多支持10张图片');
   }
 
   const body: any = {
