@@ -15,9 +15,19 @@ export const UserProfileCard: React.FC = () => {
     const fetchUserData = async () => {
       try {
         setLoading(true);
-        const data = await getUserInfo();
+
+        // 尝试使用 authUser 的信息作为备用参数
+        const options = authUser ? {
+          provider: 'authing',
+          provider_id: authUser.id,
+        } : undefined;
+
+        const data = await getUserInfo(options);
         if (data) {
           setUserData(data);
+          setError(null);
+        } else {
+          setError('无法获取用户信息，请尝试重新登录');
         }
       } catch (err) {
         console.error('获取用户信息失败:', err);
@@ -28,7 +38,7 @@ export const UserProfileCard: React.FC = () => {
     };
 
     fetchUserData();
-  }, []);
+  }, [authUser]);
 
   const handleLogout = async () => {
     if (confirm('确定要退出登录吗?')) {

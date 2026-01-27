@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { Key, Zap, TrendingUp, Clock, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { getUserInfo, type UserMeResponse } from '@/services/userApiService';
+import { useAuth } from '@/contexts/AuthContext';
 
 export const QuotaCard: React.FC = () => {
+  const { user: authUser } = useAuth();
   const [userData, setUserData] = useState<UserMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -14,10 +16,19 @@ export const QuotaCard: React.FC = () => {
     try {
       if (showLoading) setLoading(true);
       setRefreshing(!showLoading);
-      const data = await getUserInfo();
+
+      // 尝试使用 authUser 的信息作为备用参数
+      const options = authUser ? {
+        provider: 'authing',
+        provider_id: authUser.id,
+      } : undefined;
+
+      const data = await getUserInfo(options);
       if (data) {
         setUserData(data);
         setError(null);
+      } else {
+        setError('无法获取配额信息，请尝试重新登录');
       }
     } catch (err) {
       console.error('获取配额信息失败:', err);
@@ -30,7 +41,7 @@ export const QuotaCard: React.FC = () => {
 
   useEffect(() => {
     fetchUserData();
-  }, []);
+  }, [authUser]);
 
   const handleRefresh = () => {
     fetchUserData(false);

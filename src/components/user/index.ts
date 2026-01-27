@@ -5,3 +5,4 @@
 export { UserProfileCard } from './UserProfileCard';
 export { QuotaCard } from './QuotaCard';
 export { UserDashboard } from './UserDashboard';
+export { UserApiDebug } from './UserApiDebug';

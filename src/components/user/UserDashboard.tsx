@@ -3,9 +3,12 @@
 import React from 'react';
 import { UserProfileCard } from './UserProfileCard';
 import { QuotaCard } from './QuotaCard';
+import { UserApiDebug } from './UserApiDebug';
 
 interface UserDashboardProps {
   layout?: 'vertical' | 'horizontal' | 'grid';
+  /** 是否显示调试面板 */
+  showDebug?: boolean;
   className?: string;
 }
 
@@ -15,6 +18,7 @@ interface UserDashboardProps {
  */
 export const UserDashboard: React.FC<UserDashboardProps> = ({
   layout = 'vertical',
+  showDebug = process.env.NODE_ENV === 'development',
   className = '',
 }) => {
   const layoutClasses = {
@@ -25,6 +29,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   return (
     <div className={`${layoutClasses[layout]} ${className}`}>
+      {showDebug && <UserApiDebug />}
       <UserProfileCard />
       <QuotaCard />
     </div>
