@@ -7,7 +7,7 @@
  * - veo3.1-components: 多图参考模式 (1-3张图)
  */
 
-import { getApiConfig, handleApiError, wait, type VideoGenerationResult } from './shared';
+import { handleApiError, wait, type VideoGenerationResult } from './shared';
 
 // ==================== 类型定义 ====================
 
@@ -31,13 +31,46 @@ export interface VeoTaskResult {
   };
 }
 
+const getGatewayConfig = () => {
+  const baseUrl = process.env.OPENAI_BASE_URL
+    || process.env.GATEWAY_BASE_URL
+    || 'https://api.lsaigc.com';
+  const apiKey = process.env.OPENAI_API_KEY;
+  return { baseUrl, apiKey };
+};
+
+const normalizeTaskResult = (taskId: string, payload: any): VeoTaskResult => {
+  const data = payload?.data ?? payload ?? {};
+  const rawStatus = (data.status || data.state || data.task_status || '').toString();
+  const errorMsg = data.fail_reason || data.error || data.message;
+
+  let status: VeoTaskResult['status'] = 'IN_PROGRESS';
+  if (['SUCCESS', 'SUCCEEDED', 'DONE'].includes(rawStatus.toUpperCase()))
+    status = 'SUCCESS';
+  else if (['FAILURE', 'FAILED', 'ERROR'].includes(rawStatus.toUpperCase()) || errorMsg)
+    status = 'FAILURE';
+
+  const output = data.data?.creations?.[0]?.url
+    || data.data?.output
+    || data.output
+    || (typeof data.fail_reason === 'string' && data.fail_reason.startsWith('http') ? data.fail_reason : undefined);
+
+  return {
+    task_id: data.task_id || taskId,
+    status,
+    progress: data.progress,
+    fail_reason: errorMsg,
+    data: output ? { output } : undefined,
+  };
+};
+
 // ==================== API 函数 ====================
 
 /**
  * 创建 Veo 视频生成任务
  */
 export const createTask = async (options: VeoGenerateOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getApiConfig();
+  const { baseUrl, apiKey } = getGatewayConfig();
 
   if (!apiKey) {
     throw new Error('API Key未配置，请在设置中配置');
@@ -54,7 +87,7 @@ export const createTask = async (options: VeoGenerateOptions): Promise<string> =
   if (options.enableUpsample !== undefined) body.enable_upsample = options.enableUpsample;
   if (options.images && options.images.length > 0) body.images = options.images;
 
-  const response = await fetch(`${baseUrl}/v2/videos/generations`, {
+  const response = await fetch(`${baseUrl}/v1/video/generations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -69,20 +102,24 @@ export const createTask = async (options: VeoGenerateOptions): Promise<string> =
   }
 
   const result = await response.json();
-  return result.task_id;
+  const taskId = result?.task_id || result?.data?.task_id;
+  if (!taskId) {
+    throw new Error('Veo 未返回任务ID');
+  }
+  return taskId;
 };
 
 /**
  * 查询 Veo 任务状态
  */
 export const queryTask = async (taskId: string): Promise<VeoTaskResult> => {
-  const { baseUrl, apiKey } = getApiConfig();
+  const { baseUrl, apiKey } = getGatewayConfig();
 
   if (!apiKey) {
     throw new Error('API Key未配置');
   }
 
-  const response = await fetch(`${baseUrl}/v2/videos/generations/${taskId}`, {
+  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -94,7 +131,8 @@ export const queryTask = async (taskId: string): Promise<VeoTaskResult> => {
     throw new Error(`Veo查询错误: ${response.status} - ${handleApiError(errorData)}`);
   }
 
-  return response.json();
+  const payload = await response.json();
+  return normalizeTaskResult(taskId, payload);
 };
 
 /**

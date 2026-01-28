@@ -2,14 +2,28 @@
  * 厂商服务共享工具
  */
 
+const DEFAULT_GATEWAY_BASE_URL = 'https://api.lsaigc.com';
+
+export const isGatewayProxyBaseUrl = (baseUrl: string) => baseUrl.startsWith('/api/gateway');
+
 // API 配置获取
 export const getApiConfig = () => {
-  const baseUrl = process.env.NEXT_PUBLIC_OPENAI_BASE_URL ||
-                  process.env.OPENAI_BASE_URL ||
-                  'https://api.bltcy.ai';
-  const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY ||
-                 process.env.OPENAI_API_KEY ||
-                 (typeof window !== 'undefined' ? localStorage.getItem('openai_api_key') : null);
+  const useProxy = process.env.NEXT_PUBLIC_USE_GATEWAY_PROXY === 'true';
+  const proxyBaseUrl = process.env.NEXT_PUBLIC_GATEWAY_PROXY_BASE || '/api/gateway';
+
+  const isBrowser = typeof window !== 'undefined';
+  const baseUrl = isBrowser && useProxy
+    ? proxyBaseUrl
+    : (process.env.NEXT_PUBLIC_OPENAI_BASE_URL ||
+       process.env.OPENAI_BASE_URL ||
+       process.env.GATEWAY_BASE_URL ||
+       DEFAULT_GATEWAY_BASE_URL);
+
+  const apiKey = isBrowser && useProxy
+    ? null
+    : (process.env.NEXT_PUBLIC_OPENAI_API_KEY ||
+       process.env.OPENAI_API_KEY ||
+       (isBrowser ? localStorage.getItem('openai_api_key') : null));
 
   return { baseUrl, apiKey };
 };
@@ -187,4 +201,3 @@ export const extractLastFrame = (videoSrc: string): Promise<string> => {
     video.onerror = () => { reject(new Error("Video load failed")); video.remove(); };
   });
 };
-

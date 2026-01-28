@@ -19,6 +19,8 @@ import { parseSubjectReferences, cleanSubjectReferences, getPrimaryImage } from 
 import { getSubjectImageSrc } from '@/services/cosStorage';
 import { UserInfoWidget } from './UserInfoWidget';
 import { UserInfoModal } from './UserInfoModal';
+import { LoginModal } from './LoginModal';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ==================== API 调用层 ====================
 
@@ -451,10 +453,9 @@ export default function StudioTab() {
 
     // Settings State
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-    // User Info State
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [userModalTab, setUserModalTab] = useState<'account' | 'credits'>('account');
+    const [isLoginOpen, setIsLoginOpen] = useState(false);
 
     // Canvas Management State
     const [canvases, setCanvases] = useState<Canvas[]>([]);
@@ -503,6 +504,7 @@ export default function StudioTab() {
     const [croppingNodeId, setCroppingNodeId] = useState<string | null>(null);
     const [imageToCrop, setImageToCrop] = useState<string | null>(null);
     const [videoToCrop, setVideoToCrop] = useState<string | null>(null); // 视频帧选择源
+    const { isAuthenticated, isLoading: authLoading } = useAuth();
 
     // 组图拖拽放置预览状态
     const [gridDragDropPreview, setGridDragDropPreview] = useState<{
@@ -2671,12 +2673,7 @@ export default function StudioTab() {
                         await new Promise(resolve => setTimeout(resolve, 5000)); // 每 5 秒查询一次
                         attempts++;
 
-                        const queryResult = await queryViduTask(result.taskId, {
-                            model: viduConfig.model,
-                            resolution: viduConfig.resolution,
-                            durationSeconds: totalDuration,
-                            recordConsumption: true,
-                        });
+                        const queryResult = await queryViduTask(result.taskId);
 
                         if (!queryResult.success) {
                             throw new Error(queryResult.error || '查询任务状态失败');
@@ -3164,6 +3161,21 @@ export default function StudioTab() {
         };
     }, []);
 
+    useEffect(() => {
+        if (authLoading) return;
+        if (isAuthenticated) {
+            setIsLoginOpen(false);
+            return;
+        }
+        const seen = typeof window !== 'undefined' ? localStorage.getItem('login_modal_seen') : null;
+        if (!seen) {
+            setIsLoginOpen(true);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('login_modal_seen', '1');
+            }
+        }
+    }, [authLoading, isAuthenticated]);
+
     return (
         <div className="w-screen h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200" style={{ '--grid-color': '#cbd5e1', '--grid-color-dark': '#334155' } as React.CSSProperties}>
             <div
@@ -3183,7 +3195,8 @@ export default function StudioTab() {
                     const isOnChat = target.closest('[data-chat-panel]');
                     const isOnConfigPanel = target.closest('[data-config-panel]');
                     const isOnBottomToolbar = target.closest('[data-bottom-toolbar]');
-                    if (isOnNode || isOnGroup || isOnSidebar || isOnChat || isOnConfigPanel || isOnBottomToolbar || selectionRect) return;
+                    const isOnUserPanel = target.closest('[data-user-panel]');
+                    if (isOnNode || isOnGroup || isOnSidebar || isOnChat || isOnConfigPanel || isOnBottomToolbar || isOnUserPanel || selectionRect) return;
 
                     // 转换为画布坐标并检查是否在空白区域
                     const rect = canvasContainerRef.current?.getBoundingClientRect();
@@ -4265,6 +4278,28 @@ export default function StudioTab() {
 
                 <AssistantPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
+                {/* 用户信息入口 - 左下角 */}
+                <div data-user-panel className="absolute bottom-8 left-8 z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <UserInfoWidget
+                        onOpenModal={(tab) => {
+                            setUserModalTab(tab);
+                            setIsUserModalOpen(true);
+                        }}
+                        onOpenLogin={() => setIsLoginOpen(true)}
+                    />
+                </div>
+
+                <UserInfoModal
+                    isOpen={isUserModalOpen}
+                    onClose={() => setIsUserModalOpen(false)}
+                    defaultTab={userModalTab}
+                />
+
+                <LoginModal
+                    isOpen={isLoginOpen}
+                    onClose={() => setIsLoginOpen(false)}
+                />
+
                 {/* 底部工具栏：撤销/重做 + 缩放控制 */}
                 <div data-bottom-toolbar className="absolute bottom-8 right-8 flex items-center gap-1 px-2 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-2xl border border-slate-300 dark:border-slate-600 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     {/* 撤销/重做 */}
@@ -4367,23 +4402,6 @@ export default function StudioTab() {
                         <Scan size={14} strokeWidth={2.5} />
                     </button>
                 </div>
-
-                {/* 用户信息入口 - 左下角 */}
-                <div className="absolute bottom-8 left-8 z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <UserInfoWidget
-                        onOpenModal={(tab) => {
-                            setUserModalTab(tab);
-                            setIsUserModalOpen(true);
-                        }}
-                    />
-                </div>
-
-                {/* User Info Modal (unified) */}
-                <UserInfoModal
-                    isOpen={isUserModalOpen}
-                    onClose={() => setIsUserModalOpen(false)}
-                    defaultTab={userModalTab}
-                />
 
                 {/* Subject Editor Modal */}
                 {isSubjectEditorOpen && (

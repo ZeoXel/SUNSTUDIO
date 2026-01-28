@@ -11,8 +11,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // API 配置
+const normalizeOpenAIBase = (baseUrl: string) => {
+    if (baseUrl.endsWith('/v1')) return baseUrl;
+    return `${baseUrl.replace(/\/+$/, '')}/v1`;
+};
+
 const getApiConfig = () => {
-    const baseUrl = process.env.OPENAI_API_BASE || process.env.OPENAI_BASE_URL || 'https://api.bltcy.ai';
+    const rawBaseUrl = process.env.OPENAI_API_BASE
+        || process.env.OPENAI_BASE_URL
+        || process.env.GATEWAY_BASE_URL
+        || 'https://api.lsaigc.com';
+    const baseUrl = normalizeOpenAIBase(rawBaseUrl);
     const apiKey = process.env.OPENAI_API_KEY;
     return { baseUrl, apiKey };
 };

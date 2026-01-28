@@ -52,11 +52,14 @@ export interface UserMeResponse {
             totalCost: number;
         };
     };
+    balance?: number;
 }
 
 // 存储 Key
 const USERAPI_KEY = 'userapi_key';
 const USERAPI_USER = 'userapi_user';
+const USER_ASSIGNED_KEY = 'user_assigned_key';
+const USER_ASSIGNED_KEY_TS = 'user_assigned_key_ts';
 
 /**
  * 获取 USERAPI 基础 URL
@@ -66,20 +69,22 @@ const getUserApiBaseUrl = (): string => {
 };
 
 /**
- * 保存 API Key 到本地存储
+ * 保存 API Key 到本地存储（保留 USERAPI_KEY 兼容字段）
  */
 export const saveApiKey = (key: string) => {
     if (typeof window !== 'undefined') {
         localStorage.setItem(USERAPI_KEY, key);
+        localStorage.setItem(USER_ASSIGNED_KEY, key);
+        localStorage.setItem(USER_ASSIGNED_KEY_TS, String(Date.now()));
     }
 };
 
 /**
- * 获取存储的 API Key
+ * 获取存储的 API Key（优先用户分配密钥）
  */
 export const getApiKey = (): string | null => {
     if (typeof window !== 'undefined') {
-        return localStorage.getItem(USERAPI_KEY);
+        return localStorage.getItem(USER_ASSIGNED_KEY) || localStorage.getItem(USERAPI_KEY);
     }
     return null;
 };
@@ -91,6 +96,8 @@ export const clearApiKey = () => {
     if (typeof window !== 'undefined') {
         localStorage.removeItem(USERAPI_KEY);
         localStorage.removeItem(USERAPI_USER);
+        localStorage.removeItem(USER_ASSIGNED_KEY);
+        localStorage.removeItem(USER_ASSIGNED_KEY_TS);
     }
 };
 
@@ -168,46 +175,39 @@ export const syncUserToUserApi = async (params: {
  * 获取当前用户信息
  * 通过 API Key 或 provider 认证
  */
-export const getUserInfo = async (options?: {
-    provider?: string;
-    provider_id?: string;
-}): Promise<UserMeResponse | null> => {
-    const baseUrl = getUserApiBaseUrl();
-    const apiKey = getApiKey();
+export const getUserInfo = async (): Promise<UserMeResponse | null> => {
+    try {
+        const response = await fetch('/api/user/profile');
+        if (!response.ok) {
+            return null;
+        }
 
-    // 优先使用 API Key 认证
-    if (apiKey) {
-        const response = await fetch(`${baseUrl}/api/user/me`, {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
+        const profile = await response.json();
+        return {
+            user: {
+                id: profile.id,
+                provider: 'tencent',
+                name: profile.name,
+                username: profile.name,
+                email: null,
+                phone: profile.phone || null,
+                avatar: null,
+                role: profile.role || 'user',
+                status: 'active',
+                createdAt: profile.createdAt,
             },
-        });
-
-        if (response.ok) {
-            return response.json();
-        }
-
-        // API Key 无效，清除并尝试其他方式
-        if (response.status === 401) {
-            clearApiKey();
-        }
+            keys: [],
+            usage: {
+                last30Days: {
+                    totalRequests: 0,
+                    totalCost: 0,
+                },
+            },
+            balance: profile.balance || 0,
+        };
+    } catch {
+        return null;
     }
-
-    // 使用 provider 查询
-    if (options?.provider && options?.provider_id) {
-        const params = new URLSearchParams({
-            provider: options.provider,
-            provider_id: options.provider_id,
-        });
-
-        const response = await fetch(`${baseUrl}/api/user/me?${params}`);
-
-        if (response.ok) {
-            return response.json();
-        }
-    }
-
-    return null;
 };
 
 /**

@@ -23,9 +23,67 @@ import { wait } from './shared';
 // ==================== 配置 ====================
 
 const getViduConfig = () => {
-  const baseUrl = process.env.VIDU_API_BASE || 'https://api.vidu.cn';
-  const apiKey = process.env.VIDU_API_KEY || process.env.OPENAI_API_KEY;
+  const baseUrl = process.env.OPENAI_BASE_URL
+    || process.env.GATEWAY_BASE_URL
+    || 'https://api.lsaigc.com';
+  const apiKey = process.env.OPENAI_API_KEY;
   return { baseUrl, apiKey };
+};
+
+const normalizeTaskResult = (taskId: string, payload: any): TaskResult => {
+  const data = payload?.data ?? payload ?? {};
+  const rawStatus = (data.status || data.state || data.task_status || '').toString();
+  const errorMsg = data.fail_reason || data.error || data.message;
+
+  let state: TaskState = 'processing';
+  if (['SUCCESS', 'SUCCEEDED', 'DONE'].includes(rawStatus.toUpperCase()))
+    state = 'success';
+  else if (['FAILURE', 'FAILED', 'ERROR'].includes(rawStatus.toUpperCase()) || errorMsg)
+    state = 'failed';
+  else if (['QUEUEING', 'QUEUED', 'CREATED'].includes(rawStatus.toUpperCase()))
+    state = 'queueing';
+
+  const videoUrl = data.data?.creations?.[0]?.url
+    || data.data?.output
+    || data.url
+    || (typeof data.fail_reason === 'string' && data.fail_reason.startsWith('http') ? data.fail_reason : undefined);
+
+  return {
+    task_id: data.task_id || taskId,
+    state,
+    credits: data.credits,
+    err_code: errorMsg,
+    creations: videoUrl ? [{ id: taskId, url: videoUrl, cover_url: data.data?.creations?.[0]?.cover_url }] : [],
+  };
+};
+
+const createGatewayTask = async (body: Record<string, any>): Promise<string> => {
+  const { baseUrl, apiKey } = getViduConfig();
+
+  if (!apiKey) {
+    throw new Error('API Key 未配置');
+  }
+
+  const response = await fetch(`${baseUrl}/v1/video/generations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Vidu API 错误: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  const taskId = result?.task_id || result?.data?.task_id;
+  if (!taskId) {
+    throw new Error('Vidu 未返回任务ID');
+  }
+  return taskId;
 };
 
 // ==================== 类型定义 ====================
@@ -134,12 +192,12 @@ export const queryTask = async (taskId: string): Promise<TaskResult> => {
   const { baseUrl, apiKey } = getViduConfig();
 
   if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
+    throw new Error('API Key 未配置');
   }
 
-  const response = await fetch(`${baseUrl}/ent/v2/tasks/${taskId}/creations`, {
+  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}`, {
     headers: {
-      'Authorization': `Token ${apiKey}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
   });
 
@@ -148,22 +206,18 @@ export const queryTask = async (taskId: string): Promise<TaskResult> => {
     throw new Error(`Vidu 查询错误: ${response.status} - ${errorText}`);
   }
 
-  return response.json();
+  const payload = await response.json();
+  return normalizeTaskResult(taskId, payload);
 };
 
 /**
  * 文生视频
  */
 export const text2video = async (options: Text2VideoOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getViduConfig();
-
-  if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
-  }
-
   const body: any = {
     model: options.model,
     prompt: options.prompt,
+    mode: 'text2video',
   };
 
   if (options.style) body.style = options.style;
@@ -175,40 +229,21 @@ export const text2video = async (options: Text2VideoOptions): Promise<string> =>
   if (options.watermark !== undefined) body.watermark = options.watermark;
   if (options.callback_url) body.callback_url = options.callback_url;
 
-  const response = await fetch(`${baseUrl}/ent/v2/text2video`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vidu text2video 错误: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.task_id;
+  return createGatewayTask(body);
 };
 
 /**
  * 图生视频
  */
 export const img2video = async (options: Img2VideoOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getViduConfig();
-
-  if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
-  }
-
   const body: any = {
     model: options.model,
-    images: options.images,
+    mode: 'img2video',
   };
 
   if (options.prompt) body.prompt = options.prompt;
+  if (options.images?.length === 1) body.image = options.images[0];
+  else if (options.images?.length) body.images = options.images;
   if (options.duration) body.duration = options.duration;
   if (options.resolution) body.resolution = options.resolution;
   if (options.movement_amplitude) body.movement_amplitude = options.movement_amplitude;
@@ -218,34 +253,13 @@ export const img2video = async (options: Img2VideoOptions): Promise<string> => {
   if (options.watermark !== undefined) body.watermark = options.watermark;
   if (options.callback_url) body.callback_url = options.callback_url;
 
-  const response = await fetch(`${baseUrl}/ent/v2/img2video`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vidu img2video 错误: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.task_id;
+  return createGatewayTask(body);
 };
 
 /**
  * 首尾帧生成视频
  */
 export const startEnd2video = async (options: StartEnd2VideoOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getViduConfig();
-
-  if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
-  }
-
   if (!options.images || options.images.length !== 2) {
     throw new Error('首尾帧需要提供2张图片');
   }
@@ -253,6 +267,7 @@ export const startEnd2video = async (options: StartEnd2VideoOptions): Promise<st
   const body: any = {
     model: options.model,
     images: options.images,
+    mode: 'firstTail',
   };
 
   if (options.prompt) body.prompt = options.prompt;
@@ -264,34 +279,13 @@ export const startEnd2video = async (options: StartEnd2VideoOptions): Promise<st
   if (options.watermark !== undefined) body.watermark = options.watermark;
   if (options.callback_url) body.callback_url = options.callback_url;
 
-  const response = await fetch(`${baseUrl}/ent/v2/start-end2video`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vidu start-end2video 错误: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.task_id;
+  return createGatewayTask(body);
 };
 
 /**
  * 智能多帧生成视频
  */
 export const multiframe = async (options: MultiframeOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getViduConfig();
-
-  if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
-  }
-
   if (!options.start_image) {
     throw new Error('智能多帧缺少首帧图片 (start_image)');
   }
@@ -310,40 +304,20 @@ export const multiframe = async (options: MultiframeOptions): Promise<string> =>
     model: options.model,
     start_image: options.start_image,
     image_settings: options.image_settings,
+    mode: 'multiframe',
   };
 
   if (options.resolution) body.resolution = options.resolution;
   if (options.watermark !== undefined) body.watermark = options.watermark;
   if (options.callback_url) body.callback_url = options.callback_url;
 
-  const response = await fetch(`${baseUrl}/ent/v2/multiframe`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vidu multiframe 错误: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.task_id;
+  return createGatewayTask(body);
 };
 
 /**
  * 参考生视频 - 音视频直出 (带主体和台词)
  */
 export const reference2videoAudio = async (options: Reference2VideoAudioOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getViduConfig();
-
-  if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
-  }
-
   if (!options.subjects || options.subjects.length < 1) {
     throw new Error('参考生视频至少需要1个主体');
   }
@@ -357,6 +331,7 @@ export const reference2videoAudio = async (options: Reference2VideoAudioOptions)
     subjects: options.subjects,
     prompt: options.prompt,
     audio: true,
+    mode: 'reference',
   };
 
   if (options.duration) body.duration = options.duration;
@@ -366,34 +341,13 @@ export const reference2videoAudio = async (options: Reference2VideoAudioOptions)
   if (options.watermark !== undefined) body.watermark = options.watermark;
   if (options.callback_url) body.callback_url = options.callback_url;
 
-  const response = await fetch(`${baseUrl}/ent/v2/reference2video`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vidu reference2video 错误: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.task_id;
+  return createGatewayTask(body);
 };
 
 /**
  * 参考生视频 - 视频直出 (主体一致性，可选BGM)
  */
 export const reference2video = async (options: Reference2VideoOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getViduConfig();
-
-  if (!apiKey) {
-    throw new Error('Vidu API Key 未配置');
-  }
-
   if (!options.images || options.images.length < 1) {
     throw new Error('参考生视频至少需要1张参考图');
   }
@@ -406,6 +360,7 @@ export const reference2video = async (options: Reference2VideoOptions): Promise<
     model: options.model,
     images: options.images,
     prompt: options.prompt,
+    mode: 'reference',
   };
 
   if (options.duration) body.duration = options.duration;
@@ -416,22 +371,7 @@ export const reference2video = async (options: Reference2VideoOptions): Promise<
   if (options.watermark !== undefined) body.watermark = options.watermark;
   if (options.callback_url) body.callback_url = options.callback_url;
 
-  const response = await fetch(`${baseUrl}/ent/v2/reference2video`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vidu reference2video 错误: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.task_id;
+  return createGatewayTask(body);
 };
 
 // ==================== 统一生成接口 ====================

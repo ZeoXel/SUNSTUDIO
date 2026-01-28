@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, User, CreditCard, Mail, Phone, Key, RefreshCw, TrendingUp, Activity, Copy, Check, Edit2 } from 'lucide-react';
-import { getUserInfo, getApiKey, type UserMeResponse } from '@/services/userApiService';
+import { getUserInfo, type UserMeResponse } from '@/services/userApiService';
 import { getCreditInfo } from '@/services/creditsService';
+import { fetchAssignedApiKey } from '@/services/userKeyService';
 import type { CreditInfo } from '@/types/credits';
 import { TrendChart } from './charts/TrendChart';
 import { DonutChart } from './charts/DonutChart';
@@ -79,6 +80,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
         setUserData(data);
         setEditedUsername(data.user.username || data.user.name);
       }
+      await fetchAssignedApiKey();
     } catch (err) {
       console.error('获取用户信息失败:', err);
     } finally {
@@ -121,34 +123,22 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
   const handleSaveUsername = async () => {
     if (!editedUsername.trim() || !userData) return;
 
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      alert('未登录，请刷新页面后重试');
-      return;
-    }
-
     setSavingUsername(true);
     try {
-      // 直接调用 USERAPI 网关更新用户名
-      const baseUrl = process.env.NEXT_PUBLIC_USERAPI_URL || 'http://localhost:3001';
-      const response = await fetch(`${baseUrl}/api/user/update-username`, {
+      const response = await fetch('/api/user/update-name', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ username: editedUsername.trim() }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editedUsername.trim() }),
       });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: '更新失败' }));
-        throw new Error(error.error || '更新用户名失败');
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '更新用户名失败');
       }
 
-      // 更新本地数据
       setUserData({
         ...userData,
-        user: { ...userData.user, username: editedUsername.trim() }
+        user: { ...userData.user, username: editedUsername.trim(), name: editedUsername.trim() },
       });
       setIsEditingUsername(false);
     } catch (err) {

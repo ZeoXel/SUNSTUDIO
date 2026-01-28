@@ -15,7 +15,11 @@ import { wait } from './shared';
 // ==================== 配置 ====================
 
 const getSunoConfig = () => {
-  const baseUrl = process.env.SUNO_API_BASE || process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || 'https://api.bltcy.ai';
+  const baseUrl = process.env.SUNO_API_BASE
+    || process.env.OPENAI_BASE_URL
+    || process.env.OPENAI_API_BASE
+    || process.env.GATEWAY_BASE_URL
+    || 'https://api.lsaigc.com';
   const apiKey = process.env.SUNO_API_KEY || process.env.OPENAI_API_KEY;
   return { baseUrl, apiKey };
 };

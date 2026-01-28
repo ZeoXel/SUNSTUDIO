@@ -8,7 +8,7 @@
  * 注意: Seedream 使用独立的火山引擎官方接口，见 seedream.ts
  */
 
-import { getApiConfig, handleApiError, type ImageGenerationResult } from './shared';
+import { getApiConfig, handleApiError, isGatewayProxyBaseUrl, type ImageGenerationResult } from './shared';
 
 // ==================== 类型定义 ====================
 
@@ -37,7 +37,7 @@ const getProviderFromModel = (model: string): 'nano-banana' | 'gemini' => {
 export const generateImage = async (options: ImageGenerateOptions): Promise<ImageGenerationResult> => {
   const { baseUrl, apiKey } = getApiConfig();
 
-  if (!apiKey) {
+  if (!apiKey && !isGatewayProxyBaseUrl(baseUrl)) {
     throw new Error('API Key未配置');
   }
 
@@ -93,12 +93,16 @@ const generateSingleImage = async (
     body.image_size = options.imageSize;
   }
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
   const response = await fetch(`${baseUrl}/v1/images/generations`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify(body),
   });
 

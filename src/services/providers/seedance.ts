@@ -9,9 +9,11 @@ import { handleApiError, wait, type VideoGenerationResult } from './shared';
 
 // ==================== 配置 ====================
 
-const getVolcengineConfig = () => {
-  const baseUrl = 'https://ark.cn-beijing.volces.com/api/v3';
-  const apiKey = process.env.VOLCENGINE_API_KEY || process.env.ARK_API_KEY;
+const getGatewayConfig = () => {
+  const baseUrl = process.env.OPENAI_BASE_URL
+    || process.env.GATEWAY_BASE_URL
+    || 'https://api.lsaigc.com';
+  const apiKey = process.env.OPENAI_API_KEY;
   return { baseUrl, apiKey };
 };
 
@@ -43,16 +45,40 @@ export interface SeedanceTaskResult {
   };
 }
 
+const normalizeTaskResult = (taskId: string, payload: any): SeedanceTaskResult => {
+  const data = payload?.data ?? payload ?? {};
+  const rawStatus = (data.status || data.state || data.task_status || '').toString();
+  const errorMsg = data.fail_reason || data.error || data.message;
+
+  let status: SeedanceTaskResult['status'] = 'running';
+  if (['SUCCESS', 'SUCCEEDED', 'DONE'].includes(rawStatus.toUpperCase()))
+    status = 'succeeded';
+  else if (['FAILURE', 'FAILED', 'ERROR'].includes(rawStatus.toUpperCase()) || errorMsg)
+    status = 'failed';
+
+  const videoUrl = data.data?.creations?.[0]?.url
+    || data.data?.output
+    || data.output
+    || (typeof data.fail_reason === 'string' && data.fail_reason.startsWith('http') ? data.fail_reason : undefined);
+
+  return {
+    id: data.task_id || taskId,
+    status,
+    error: errorMsg ? { message: errorMsg } : undefined,
+    content: videoUrl ? { video_url: videoUrl, last_frame: data.last_frame } : undefined,
+  };
+};
+
 // ==================== API 函数 ====================
 
 /**
  * 创建 Seedance 视频生成任务
  */
 export const createTask = async (options: SeedanceGenerateOptions): Promise<string> => {
-  const { baseUrl, apiKey } = getVolcengineConfig();
+  const { baseUrl, apiKey } = getGatewayConfig();
 
   if (!apiKey) {
-    throw new Error('火山引擎 API Key 未配置');
+    throw new Error('API Key 未配置');
   }
 
   // 验证并修正 duration（Seedance 1.5 Pro 支持 4-12 秒，或 -1 自动）
@@ -67,47 +93,15 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
     }
   }
 
-  // 将参数追加到提示词
-  let finalPrompt = options.prompt;
-  const params: string[] = [];
-
-  // 时长参数 --dur
-  if (validDuration && validDuration > 0) {
-    params.push(`--dur ${validDuration}`);
-  }
-
-  // 画面比例参数 --rt (ratio)
-  if (options.aspectRatio) {
-    params.push(`--rt ${options.aspectRatio}`);
-  }
-
-  // 拼接所有参数
-  if (params.length > 0) {
-    finalPrompt = `${options.prompt} ${params.join(' ')}`;
-  }
-
-  // 构建请求内容
-  const content: any[] = [{ type: 'text', text: finalPrompt }];
-
-  // 添加图片内容 (支持首尾帧 role)
-  if (options.images && options.images.length > 0) {
-    options.images.forEach((img, index) => {
-      const imageContent: any = {
-        type: 'image_url',
-        image_url: { url: img }
-      };
-      // 添加 role 字段（用于首尾帧）
-      if (options.imageRoles && options.imageRoles[index]) {
-        imageContent.role = options.imageRoles[index];
-      }
-      content.push(imageContent);
-    });
-  }
-
   const body: any = {
     model: options.model || 'doubao-seedance-1-5-pro-251215',
-    content,
+    prompt: options.prompt,
   };
+
+  if (validDuration && validDuration > 0) body.duration = validDuration;
+  if (options.aspectRatio) body.aspect_ratio = options.aspectRatio;
+  if (options.images && options.images.length > 0) body.images = options.images;
+  if (options.imageRoles && options.imageRoles.length > 0) body.image_roles = options.imageRoles;
 
   // 添加扩展配置参数
   if (options.return_last_frame !== undefined) {
@@ -129,7 +123,7 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
     body.seed = options.seed;
   }
 
-  const response = await fetch(`${baseUrl}/contents/generations/tasks`, {
+  const response = await fetch(`${baseUrl}/v1/video/generations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -144,24 +138,25 @@ export const createTask = async (options: SeedanceGenerateOptions): Promise<stri
   }
 
   const result = await response.json();
-  if (!result.id) {
+  const taskId = result?.task_id || result?.data?.task_id;
+  if (!taskId) {
     throw new Error('Seedance 未返回任务ID');
   }
 
-  return result.id;
+  return taskId;
 };
 
 /**
  * 查询 Seedance 任务状态
  */
 export const queryTask = async (taskId: string): Promise<SeedanceTaskResult> => {
-  const { baseUrl, apiKey } = getVolcengineConfig();
+  const { baseUrl, apiKey } = getGatewayConfig();
 
   if (!apiKey) {
-    throw new Error('火山引擎 API Key 未配置');
+    throw new Error('API Key 未配置');
   }
 
-  const response = await fetch(`${baseUrl}/contents/generations/tasks/${taskId}`, {
+  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -173,7 +168,8 @@ export const queryTask = async (taskId: string): Promise<SeedanceTaskResult> => 
     throw new Error(`Seedance查询错误: ${response.status} - ${handleApiError(errorData)}`);
   }
 
-  return response.json();
+  const payload = await response.json();
+  return normalizeTaskResult(taskId, payload);
 };
 
 /**
