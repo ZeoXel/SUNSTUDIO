@@ -104,8 +104,14 @@ export const removeTask = (taskId: string): void => {
 };
 
 // 查询任务状态
-export const queryTaskStatus = async (taskId: string, provider: string): Promise<VideoTaskResult> => {
-  const response = await fetch(`/api/studio/video?taskId=${taskId}&provider=${provider}`);
+export const queryTaskStatus = async (
+  taskId: string,
+  provider: string,
+  model?: string
+): Promise<VideoTaskResult> => {
+  const params = new URLSearchParams({ taskId, provider });
+  if (model) params.set('model', model);
+  const response = await fetch(`/api/studio/video?${params.toString()}`);
   if (!response.ok) {
     throw new Error(`Query failed: ${response.status}`);
   }
@@ -125,7 +131,7 @@ export const pollTask = async (
 
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const result = await queryTaskStatus(task.taskId, task.provider);
+      const result = await queryTaskStatus(task.taskId, task.provider, task.model);
 
       // 成功查询，重置错误计数和间隔
       consecutiveErrors = 0;

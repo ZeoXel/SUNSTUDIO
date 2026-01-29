@@ -177,6 +177,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get('taskId');
     const provider = searchParams.get('provider') as 'veo' | 'seedance' | 'vidu';
+    const model = searchParams.get('model') || undefined;
 
     if (!taskId) {
         return NextResponse.json({ error: 'taskId is required' }, { status: 400 });
@@ -198,7 +199,7 @@ export async function GET(request: NextRequest) {
 
         switch (provider) {
             case 'veo': {
-                const result = await veoService.queryTask(taskId, { apiKey, baseUrl: gatewayBaseUrl });
+                const result = await veoService.queryTask(taskId, { apiKey, baseUrl: gatewayBaseUrl }, model || undefined);
                 status = result.status;
                 videoUrl = result.data?.output;
                 error = result.fail_reason;
@@ -207,7 +208,7 @@ export async function GET(request: NextRequest) {
             }
 
             case 'seedance': {
-                const result = await seedanceService.queryTask(taskId, { apiKey, baseUrl: gatewayBaseUrl });
+                const result = await seedanceService.queryTask(taskId, { apiKey, baseUrl: gatewayBaseUrl }, model || undefined);
                 // 映射状态
                 if (result.status === 'succeeded') status = 'SUCCESS';
                 else if (result.status === 'failed') status = 'FAILURE';
@@ -218,7 +219,7 @@ export async function GET(request: NextRequest) {
             }
 
             case 'vidu': {
-                const result = await viduService.queryTask(taskId, { apiKey, baseUrl: gatewayBaseUrl });
+                const result = await viduService.queryTask(taskId, { apiKey, baseUrl: gatewayBaseUrl }, model || undefined);
                 // 映射状态（优先检查 err_code，因为它可能在 state 不是 failed 时就出现）
                 if (result.err_code) {
                     status = 'FAILURE';

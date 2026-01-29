@@ -42,25 +42,25 @@ const getGatewayConfig = (gateway?: GatewayConfig) => {
 };
 
 const normalizeTaskResult = (taskId: string, payload: any): VeoTaskResult => {
-  const data = payload?.data ?? payload ?? {};
-  const rawStatus = (data.status || data.state || data.task_status || '').toString();
-  const errorMsg = data.fail_reason || data.error || data.message;
+  // 根据文档，返回格式为顶层字段，不在data中嵌套
+  const rawStatus = (payload.status || payload.state || payload.task_status || '').toString();
+  const errorMsg = payload.fail_reason || payload.error || payload.message;
 
   let status: VeoTaskResult['status'] = 'IN_PROGRESS';
   if (['SUCCESS', 'SUCCEEDED', 'DONE'].includes(rawStatus.toUpperCase()))
     status = 'SUCCESS';
   else if (['FAILURE', 'FAILED', 'ERROR'].includes(rawStatus.toUpperCase()) || errorMsg)
     status = 'FAILURE';
+  else if (['NOT_START', 'QUEUED', 'SUBMITTED'].includes(rawStatus.toUpperCase()))
+    status = 'NOT_START';
 
-  const output = data.data?.creations?.[0]?.url
-    || data.data?.output
-    || data.output
-    || (typeof data.fail_reason === 'string' && data.fail_reason.startsWith('http') ? data.fail_reason : undefined);
+  // 输出URL在 data.output 字段中
+  const output = payload.data?.output || payload.output;
 
   return {
-    task_id: data.task_id || taskId,
+    task_id: payload.task_id || taskId,
     status,
-    progress: data.progress,
+    progress: payload.progress,
     fail_reason: errorMsg,
     data: output ? { output } : undefined,
   };
@@ -137,14 +137,19 @@ export const createTask = async (
 /**
  * 查询 Veo 任务状态
  */
-export const queryTask = async (taskId: string, gateway?: GatewayConfig): Promise<VeoTaskResult> => {
+export const queryTask = async (
+  taskId: string,
+  gateway?: GatewayConfig,
+  model?: string
+): Promise<VeoTaskResult> => {
   const { baseUrl, apiKey } = getGatewayConfig(gateway);
 
   if (!apiKey) {
     throw new Error('API Key未配置');
   }
 
-  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}`, {
+  const query = model ? `?model=${encodeURIComponent(model)}` : '';
+  const response = await fetch(`${baseUrl}/v2/videos/generations/${taskId}${query}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${apiKey}`,

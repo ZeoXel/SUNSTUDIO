@@ -197,14 +197,19 @@ export interface VideoGenerationResult {
 /**
  * 查询任务状态
  */
-export const queryTask = async (taskId: string, gateway?: GatewayConfig): Promise<TaskResult> => {
+export const queryTask = async (
+  taskId: string,
+  gateway?: GatewayConfig,
+  model?: string
+): Promise<TaskResult> => {
   const { baseUrl, apiKey } = getViduConfig(gateway);
 
   if (!apiKey) {
     throw new Error('API Key 未配置');
   }
 
-  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}`, {
+  const query = model ? `?model=${encodeURIComponent(model)}` : '';
+  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}${query}`, {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
     },

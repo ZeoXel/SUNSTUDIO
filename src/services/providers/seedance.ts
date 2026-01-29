@@ -154,14 +154,19 @@ export const createTask = async (
 /**
  * 查询 Seedance 任务状态
  */
-export const queryTask = async (taskId: string, gateway?: GatewayConfig): Promise<SeedanceTaskResult> => {
+export const queryTask = async (
+  taskId: string,
+  gateway?: GatewayConfig,
+  model?: string
+): Promise<SeedanceTaskResult> => {
   const { baseUrl, apiKey } = getGatewayConfig(gateway);
 
   if (!apiKey) {
     throw new Error('API Key 未配置');
   }
 
-  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}`, {
+  const query = model ? `?model=${encodeURIComponent(model)}` : '';
+  const response = await fetch(`${baseUrl}/v1/video/generations/${taskId}${query}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
