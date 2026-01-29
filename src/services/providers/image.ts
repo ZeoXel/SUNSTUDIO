@@ -78,7 +78,7 @@ const generateSingleImage = async (
   baseUrl: string,
   apiKey: string,
   options: ImageGenerateOptions,
-  provider: 'nano-banana' | 'gemini'
+  provider: 'nano-banana' | 'seedream' | 'gemini'
 ): Promise<ImageGenerationResult> => {
   const body: Record<string, any> = {
     model: options.model,
