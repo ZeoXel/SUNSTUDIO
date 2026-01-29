@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, User, CreditCard, Mail, Phone, Key, RefreshCw, TrendingUp, Activity, Copy, Check, Edit2 } from 'lucide-react';
+import { X, User, CreditCard, Mail, Phone, Key, RefreshCw, Activity, Copy, Check, Edit2, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { getUserInfo, type UserMeResponse } from '@/services/userApiService';
 import { getCreditInfo } from '@/services/creditsService';
 import { fetchAssignedApiKey } from '@/services/userKeyService';
 import type { CreditInfo } from '@/types/credits';
-import { TrendChart } from './charts/TrendChart';
-import { DonutChart } from './charts/DonutChart';
+import { VTrendChart } from './charts/VTrendChart';
+import { VDonutChart } from './charts/VDonutChart';
+import { VBarChart } from './charts/VBarChart';
 import { UserAvatar } from './UserAvatar';
 
 interface UserInfoModalProps {
@@ -32,7 +33,9 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [editedUsername, setEditedUsername] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
-  const [hoveredSegment, setHoveredSegment] = useState<{ label: string; value: number; color: string } | null>(null);
+  const [activeChartTab, setActiveChartTab] = useState<'trend' | 'distribution' | 'calls'>('trend');
+  const [fullApiKey, setFullApiKey] = useState<string | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,7 +85,10 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
         setUserData(data);
         setEditedUsername(data.user.username || data.user.name);
       }
-      await fetchAssignedApiKey();
+      const apiKey = await fetchAssignedApiKey();
+      if (apiKey) {
+        setFullApiKey(apiKey);
+      }
     } catch (err) {
       console.error('获取用户信息失败:', err);
     } finally {
@@ -467,53 +473,60 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                 </div>
               </div>
 
-              {/* 右侧：API Keys (极简) + 最近交易 */}
+              {/* 右侧：API Keys + 最近交易 */}
               <div className="col-span-2 flex flex-col gap-4 h-full overflow-hidden">
-                {/* API Keys - 极简化，宽度与下方对齐 */}
+                {/* API Keys - 显示完整密钥 */}
                 <div className="flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Key size={14} className="text-slate-500 dark:text-slate-400" />
                       <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                        API Keys
+                        API Key
                       </span>
                     </div>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {userData?.keys?.length || 0} 个密钥
-                    </span>
                   </div>
 
-                  {loadingUser && !userData?.keys ? (
+                  {loadingUser && !fullApiKey ? (
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg animate-pulse">
-                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                      <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
                     </div>
-                  ) : userData?.keys && userData.keys.length > 0 ? (
-                    <div className="space-y-2">
-                      {userData.keys.slice(0, 2).map((key) => (
-                        <button
-                          key={key.id}
-                          onClick={() => copyToClipboard(`${key.keyPrefix}...`, key.id)}
-                          className="group w-full p-2.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 transition-all text-left flex items-center justify-between"
-                        >
-                          <div className="flex-1 min-w-0 mr-3">
-                            <div className="text-xs font-medium text-slate-900 dark:text-slate-100 mb-1">
-                              {key.name}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">
-                              {`${key.keyPrefix}...`}
-                            </div>
+                  ) : fullApiKey ? (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-mono text-slate-700 dark:text-slate-300 break-all">
+                            {showApiKey ? fullApiKey : `${fullApiKey.slice(0, 8)}${'•'.repeat(32)}${fullApiKey.slice(-4)}`}
                           </div>
-                          {copiedKey === key.id ? (
-                            <Check size={14} className="text-green-600 dark:text-green-400 flex-shrink-0" />
-                          ) : (
-                            <Copy size={14} className="text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex-shrink-0" />
-                          )}
-                        </button>
-                      ))}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => setShowApiKey(!showApiKey)}
+                            className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                            title={showApiKey ? '隐藏' : '显示'}
+                          >
+                            {showApiKey ? (
+                              <EyeOff size={14} className="text-slate-500 dark:text-slate-400" />
+                            ) : (
+                              <Eye size={14} className="text-slate-500 dark:text-slate-400" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(fullApiKey, 'apikey')}
+                            className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                            title="复制"
+                          >
+                            {copiedKey === 'apikey' ? (
+                              <Check size={14} className="text-green-600 dark:text-green-400" />
+                            ) : (
+                              <Copy size={14} className="text-slate-500 dark:text-slate-400" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg text-center text-xs text-slate-500 dark:text-slate-400">
-                      暂无API Key
+                      暂无 API Key
                     </div>
                   )}
                 </div>
@@ -610,25 +623,79 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
 
               {/* 主要内容区 - 使用 flex-1 填充剩余空间 */}
               <div className="flex-1 grid grid-cols-3 gap-4 min-h-0 overflow-hidden">
-                {/* 左侧：趋势图 + 快速统计 */}
+                {/* 左侧：数据分析图表 + 快速统计 */}
                 <div className="col-span-2 flex flex-col gap-4 min-h-0">
-                  {/* 7天消耗趋势图 - 使用 flex-1 自适应 */}
+                  {/* 数据分析图表 - 带切换 */}
                   <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-4 flex flex-col min-h-0">
-                    <div className="flex items-center gap-2 mb-2 flex-shrink-0">
-                      <TrendingUp size={16} className="text-slate-500 dark:text-slate-400" />
-                      <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                        7天消耗趋势
-                      </span>
+                    <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 size={16} className="text-slate-500 dark:text-slate-400" />
+                        <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          数据分析
+                        </span>
+                      </div>
+                      <div className="flex gap-1 bg-slate-200 dark:bg-slate-700 rounded-lg p-0.5">
+                        <button
+                          onClick={() => setActiveChartTab('trend')}
+                          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                            activeChartTab === 'trend'
+                              ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          消耗趋势
+                        </button>
+                        <button
+                          onClick={() => setActiveChartTab('distribution')}
+                          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                            activeChartTab === 'distribution'
+                              ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          消耗分布
+                        </button>
+                        <button
+                          onClick={() => setActiveChartTab('calls')}
+                          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                            activeChartTab === 'calls'
+                              ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          调用次数
+                        </button>
+                      </div>
                     </div>
                     {loadingCredits && !creditInfo ? (
                       <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse" />
-                    ) : trendData.length > 0 ? (
-                      <div className="flex-1 min-h-0">
-                        <TrendChart data={trendData} color="#3b82f6" />
-                      </div>
                     ) : (
-                      <div className="flex-1 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                        暂无数据
+                      <div className="flex-1 min-h-0">
+                        {activeChartTab === 'trend' && (
+                          trendData.length > 0 ? (
+                            <VTrendChart data={trendData} color="#3b82f6" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+                              暂无数据
+                            </div>
+                          )
+                        )}
+                        {activeChartTab === 'distribution' && (
+                          <VBarChart
+                            data={donutData.map(d => ({ model: d.label, value: d.value, color: d.color }))}
+                            valueLabel="积分"
+                          />
+                        )}
+                        {activeChartTab === 'calls' && (
+                          <VBarChart
+                            data={creditInfo?.usage.last30Days.byProvider.map((item, index) => ({
+                              model: getProviderName(item.provider),
+                              value: item.transactions,
+                              color: getProviderColor(item.provider, index).fill,
+                            })) || []}
+                            valueLabel="次"
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -688,25 +755,18 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                   </div>
                   {loadingCredits && !creditInfo ? (
                     <div className="flex-1 flex items-center justify-center">
-                      <div className="w-36 h-36 bg-slate-200 dark:bg-slate-700 rounded-full animate-pulse" />
+                      <div className="w-40 h-40 bg-slate-200 dark:bg-slate-700 rounded-full animate-pulse" />
                     </div>
                   ) : donutData.length > 0 ? (
                     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                      <div className="flex-shrink-0 flex justify-center">
-                        <DonutChart
-                          data={donutData}
-                          size={140}
-                          thickness={24}
-                          onHover={(segment) => setHoveredSegment(segment)}
-                        />
+                      <div className="flex-1 min-h-0">
+                        <VDonutChart data={donutData} />
                       </div>
-                      <div className="mt-3 flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                      <div className="mt-2 flex-shrink-0 max-h-24 overflow-y-auto custom-scrollbar">
                         {creditInfo?.usage.last30Days.byProvider.map((item, index) => (
                           <div
                             key={`${item.provider}-${index}`}
                             className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-default"
-                            onMouseEnter={() => setHoveredSegment({ label: getProviderName(item.provider), value: item.consumption, color: getProviderColor(item.provider, index).fill })}
-                            onMouseLeave={() => setHoveredSegment(null)}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <div

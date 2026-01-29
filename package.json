@@ -9,9 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@types/three": "^0.182.0",
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.57.2",
+    "@types/three": "^0.182.0",
+    "@visactor/react-vchart": "^2.0.14",
+    "@visactor/vchart": "^2.0.14",
     "clsx": "^2.1.1",
     "cos-js-sdk-v5": "^1.10.1",
     "cos-nodejs-sdk-v5": "^2.15.4",
