@@ -138,7 +138,7 @@ import { getGenerationStrategy } from '@/services/videoStrategies';
 import { createMusicCustom, SunoSongInfo } from '@/services/sunoService';
 import { synthesizeSpeech, MinimaxGenerateParams } from '@/services/minimaxService';
 import { saveToStorage, loadFromStorage, saveSubjects, loadSubjects } from '@/services/storage';
-import { getMenuStructure, getDefaultModelId, type ProviderDefinition } from '@/config/models';
+import { getMenuStructure, getDefaultModelId, getImageProviders, getVideoProviders, type ProviderDefinition } from '@/config/models';
 import {
     Plus, Copy, Trash2, Type, Image as ImageIcon, Video as VideoIcon,
     MousePointerClick, LayoutTemplate, X, RefreshCw, Film, Brush, Mic2, Music, FileSearch,
@@ -3985,7 +3985,7 @@ export default function StudioTab() {
 
                             if (availableTypes.length === 0) return null;
 
-                            const handleCreateDownstreamNode = (nodeType: NodeType, generationMode?: VideoGenerationMode) => {
+                            const handleCreateDownstreamNode = (nodeType: NodeType, generationMode?: VideoGenerationMode, modelId?: string) => {
                                 saveHistory();
                                 const nodeWidth = 420;
                                 // 计算节点高度：音频360，视频分析360，其他16:9
@@ -4025,6 +4025,8 @@ export default function StudioTab() {
                                 const savedConfig = loadNodeConfig(nodeType);
 
                                 const getDefaultModel = () => {
+                                    // 优先使用传入的 modelId
+                                    if (modelId) return modelId;
                                     if (savedConfig.model) return savedConfig.model;
                                     if (nodeType === NodeType.PROMPT_INPUT) return 'gemini-2.5-flash';
                                     if (nodeType === NodeType.IMAGE_GENERATOR) return 'nano-banana';
@@ -4094,15 +4096,53 @@ export default function StudioTab() {
                                     <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                         {menuTitle}
                                     </div>
-                                    {availableTypes.map(({ type, label, icon: Icon, color, generationMode }, idx) => (
-                                        <button
-                                            key={`${type}-${generationMode || idx}`}
-                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors"
-                                            onClick={() => handleCreateDownstreamNode(type, generationMode)}
-                                        >
-                                            <Icon size={12} className={color} /> {label}
-                                        </button>
-                                    ))}
+                                    {availableTypes.map(({ type, label, icon: Icon, color, generationMode }, idx) => {
+                                        // 判断是否需要显示模型子菜单
+                                        const needsSubmenu = type === NodeType.IMAGE_GENERATOR || type === NodeType.VIDEO_GENERATOR;
+                                        const providers = type === NodeType.IMAGE_GENERATOR ? getImageProviders() :
+                                                         type === NodeType.VIDEO_GENERATOR ? getVideoProviders() : [];
+
+                                        if (needsSubmenu && providers.length > 0) {
+                                            return (
+                                                <div key={`${type}-${generationMode || idx}`} className="relative group/submenu">
+                                                    <div className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors cursor-pointer">
+                                                        <Icon size={12} className={color} />
+                                                        <span className="flex-1">{label}</span>
+                                                        <ChevronRightIcon size={12} className="text-slate-400" />
+                                                    </div>
+                                                    {/* 二级子菜单 - 显示厂商 */}
+                                                    <div className="absolute left-full top-0 ml-1 opacity-0 invisible group-hover/submenu:opacity-100 group-hover/submenu:visible transition-all duration-150 z-[101]">
+                                                        <div className="bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-1 min-w-[140px]">
+                                                            {providers.map((provider: ProviderDefinition) => (
+                                                                <button
+                                                                    key={provider.id}
+                                                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-600 dark:hover:text-cyan-400 rounded-lg flex items-center gap-2 transition-colors"
+                                                                    onClick={() => {
+                                                                        const defaultModelId = getDefaultModelId(provider.id);
+                                                                        handleCreateDownstreamNode(type, generationMode, defaultModelId);
+                                                                    }}
+                                                                >
+                                                                    {provider.logo && <img src={provider.logo} alt="" className="w-4 h-4 rounded" onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+                                                                    <span>{provider.name}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        // 普通项目 - 直接点击
+                                        return (
+                                            <button
+                                                key={`${type}-${generationMode || idx}`}
+                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2.5 transition-colors"
+                                                onClick={() => handleCreateDownstreamNode(type, generationMode)}
+                                            >
+                                                <Icon size={12} className={color} /> {label}
+                                            </button>
+                                        );
+                                    })}
                                 </>
                             );
                         })()}

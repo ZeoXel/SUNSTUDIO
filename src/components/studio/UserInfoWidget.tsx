@@ -150,7 +150,6 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
               <UserAvatar
                 name={authUser?.name ?? undefined}
                 size={32}
-                className="ring-2 ring-white dark:ring-slate-700"
               />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
