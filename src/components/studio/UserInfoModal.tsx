@@ -7,6 +7,7 @@ import { getCreditInfo } from '@/services/creditsService';
 import { fetchAssignedApiKey } from '@/services/userKeyService';
 import type { CreditInfo } from '@/types/credits';
 import { VTrendChart } from './charts/VTrendChart';
+import { RechargeModal } from '@/components/recharge';
 import { VDonutChart } from './charts/VDonutChart';
 import { VBarChart } from './charts/VBarChart';
 import { UserAvatar } from './UserAvatar';
@@ -36,6 +37,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
   const [activeChartTab, setActiveChartTab] = useState<'trend' | 'distribution' | 'calls'>('trend');
   const [fullApiKey, setFullApiKey] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showRechargeModal, setShowRechargeModal] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
 
@@ -440,34 +442,28 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                   </div>
                 </div>
 
-                {/* 使用统计 - 使用真实交易数据 */}
+                {/* 账户余额与充值入口 */}
                 <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-3">
-                    最近30天
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                      账户余额
+                    </div>
+                    <button
+                      onClick={() => setShowRechargeModal(true)}
+                      className="px-3 py-1 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-full transition-all"
+                    >
+                      充值
+                    </button>
+                  </div>
+                  <div className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-1">
+                    {creditInfo?.balance?.remaining?.toFixed(2) || '0.00'}
+                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-1">积分</span>
                   </div>
                   {loadingCredits && !creditInfo?.usage ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {[1, 2].map((i) => (
-                        <div key={i} className="animate-pulse">
-                          <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-16 mb-2" />
-                          <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-20" />
-                        </div>
-                      ))}
-                    </div>
+                    <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-24 animate-pulse" />
                   ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">总请求数</div>
-                        <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                          {creditInfo?.usage.last30Days.transactions.toLocaleString() || 0}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">总消费</div>
-                        <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                          {creditInfo?.usage.last30Days.consumption.toFixed(0) || 0}
-                        </div>
-                      </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      近30天消费: {creditInfo?.usage.last30Days.consumption.toFixed(0) || 0} 积分
                     </div>
                   )}
                 </div>
@@ -614,7 +610,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                       <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">剩余</div>
                       <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                        {creditInfo?.balance.remaining.toLocaleString() || 0}
+                        {creditInfo?.balance.remaining.toFixed(2) || '0.00'}
                       </div>
                     </div>
                   </>
@@ -833,6 +829,16 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
           background-color: rgba(148, 163, 184, 0.5);
         }
       `}</style>
+
+      {/* 充值弹窗 */}
+      <RechargeModal
+        isOpen={showRechargeModal}
+        onClose={() => setShowRechargeModal(false)}
+        onSuccess={(orderNo, amount) => {
+          console.log('充值成功:', orderNo, amount)
+          fetchCreditInfo()
+        }}
+      />
     </div>
   );
 };

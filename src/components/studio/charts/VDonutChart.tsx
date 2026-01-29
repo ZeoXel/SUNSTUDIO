@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { VChart } from '@visactor/react-vchart';
-import { modelToColor, CHART_CONFIG } from './VChartWrapper';
+import { CHART_CONFIG } from './VChartWrapper';
 
 interface DonutSegment {
   label: string;
@@ -12,14 +12,10 @@ interface DonutSegment {
 
 interface VDonutChartProps {
   data: DonutSegment[];
-  title?: string;
-  onHover?: (segment: DonutSegment | null) => void;
 }
 
 export const VDonutChart: React.FC<VDonutChartProps> = ({
   data,
-  title = '模型占比',
-  onHover,
 }) => {
   const total = useMemo(() => data.reduce((sum, d) => sum + d.value, 0), [data]);
 
@@ -38,8 +34,8 @@ export const VDonutChart: React.FC<VDonutChartProps> = ({
     return {
       type: 'pie',
       data: [{ id: 'pieData', values: chartData }],
-      outerRadius: 0.85,
-      innerRadius: 0.6,
+      outerRadius: 0.88,
+      innerRadius: 0.62,
       padAngle: 1,
       valueField: 'value',
       categoryField: 'type',
@@ -49,21 +45,15 @@ export const VDonutChart: React.FC<VDonutChartProps> = ({
         },
         state: {
           hover: {
-            outerRadius: 0.88,
+            outerRadius: 0.92,
             stroke: '#fff',
             lineWidth: 2,
           },
         },
       },
-      title: {
-        visible: false,
-      },
-      legends: {
-        visible: false,
-      },
-      label: {
-        visible: false,
-      },
+      title: { visible: false },
+      legends: { visible: false },
+      label: { visible: false },
       tooltip: {
         mark: {
           content: [
@@ -86,7 +76,7 @@ export const VDonutChart: React.FC<VDonutChartProps> = ({
         title: {
           visible: true,
           style: {
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: 'bold',
             fill: '#64748b',
             text: (datum: any) => datum ? datum.type : '总消耗',
@@ -96,7 +86,7 @@ export const VDonutChart: React.FC<VDonutChartProps> = ({
           {
             visible: true,
             style: {
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: 'bold',
               fill: '#1e293b',
               text: (datum: any) => datum ? datum.value.toFixed(1) : total.toFixed(1),
@@ -105,7 +95,8 @@ export const VDonutChart: React.FC<VDonutChartProps> = ({
         ],
       },
       background: 'transparent',
-      padding: 10,
+      padding: 5,
+      animation: false,
     };
   }, [data, total]);
 
@@ -119,7 +110,7 @@ export const VDonutChart: React.FC<VDonutChartProps> = ({
 
   return (
     <div className="w-full h-full">
-      <VChart spec={spec} option={CHART_CONFIG} />
+      <VChart spec={spec as any} options={CHART_CONFIG} />
     </div>
   );
 };

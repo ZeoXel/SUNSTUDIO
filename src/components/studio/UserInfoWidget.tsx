@@ -115,7 +115,7 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
         {/* 头像 */}
         <div className="relative p-1">
           <UserAvatar
-            name={authUser?.name}
+            name={authUser?.name ?? undefined}
             size={24}
             showOnlineIndicator={!!authUser}
           />
@@ -128,7 +128,7 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
           <div className="flex items-center gap-1 px-1">
             <CreditIcon size={12} className="text-slate-500 dark:text-slate-400" />
             <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 tabular-nums">
-              {totalCredits.toLocaleString()}
+              {totalCredits.toFixed(2)}
             </span>
           </div>
         ) : (
@@ -148,7 +148,7 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
           <div className="px-2.5 py-2 mb-1 rounded-xl bg-slate-100/60 dark:bg-slate-800/60">
             <div className="flex items-center gap-2.5">
               <UserAvatar
-                name={authUser?.name}
+                name={authUser?.name ?? undefined}
                 size={32}
                 className="ring-2 ring-white dark:ring-slate-700"
               />
@@ -159,7 +159,7 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
                 {authUser && (
                   <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
                     <CreditIcon size={10} className="text-slate-400 dark:text-slate-500" />
-                    <span className="font-medium">{totalCredits.toLocaleString()}</span>
+                    <span className="font-medium">{totalCredits.toFixed(2)}</span>
                   </div>
                 )}
               </div>

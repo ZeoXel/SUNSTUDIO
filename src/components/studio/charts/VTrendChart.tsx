@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { VChart } from '@visactor/react-vchart';
-import { modelToColor, CHART_CONFIG } from './VChartWrapper';
+import { CHART_CONFIG } from './VChartWrapper';
 
 interface DataPoint {
   date: string;
@@ -12,17 +12,15 @@ interface DataPoint {
 interface VTrendChartProps {
   data: DataPoint[];
   color?: string;
-  title?: string;
 }
 
 export const VTrendChart: React.FC<VTrendChartProps> = ({
   data,
   color = '#3b82f6',
-  title,
 }) => {
   const spec = useMemo(() => {
     const chartData = data.map(d => ({
-      date: d.date.slice(5).replace('-', '/'), // MM/DD 格式
+      date: d.date.slice(5).replace('-', '/'),
       value: d.value,
     }));
 
@@ -34,7 +32,7 @@ export const VTrendChart: React.FC<VTrendChartProps> = ({
       point: {
         visible: true,
         style: {
-          size: 6,
+          size: 5,
           fill: '#fff',
           stroke: color,
           lineWidth: 2,
@@ -52,21 +50,14 @@ export const VTrendChart: React.FC<VTrendChartProps> = ({
             gradient: 'linear',
             x0: 0, y0: 0, x1: 0, y1: 1,
             stops: [
-              { offset: 0, color: color + '40' },
+              { offset: 0, color: color + '30' },
               { offset: 1, color: color + '05' },
             ],
           },
         },
       },
-      title: title ? {
-        visible: true,
-        text: title,
-        textStyle: {
-          fontSize: 14,
-          fontWeight: 'bold',
-          fill: '#64748b',
-        },
-      } : { visible: false },
+      title: { visible: false },
+      legends: { visible: false },
       axes: [
         {
           orient: 'bottom',
@@ -102,10 +93,11 @@ export const VTrendChart: React.FC<VTrendChartProps> = ({
       crosshair: {
         xField: { visible: true, line: { style: { stroke: '#94a3b8', lineWidth: 1, lineDash: [4, 4] } } },
       },
-      padding: { top: 20, right: 20, bottom: 30, left: 40 },
+      padding: { top: 15, right: 15, bottom: 25, left: 35 },
       background: 'transparent',
+      animation: false,
     };
-  }, [data, color, title]);
+  }, [data, color]);
 
   if (data.length === 0) {
     return (
@@ -117,7 +109,7 @@ export const VTrendChart: React.FC<VTrendChartProps> = ({
 
   return (
     <div className="w-full h-full">
-      <VChart spec={spec} option={CHART_CONFIG} />
+      <VChart spec={spec as any} options={CHART_CONFIG} />
     </div>
   );
 };

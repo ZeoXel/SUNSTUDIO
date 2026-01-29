@@ -58,7 +58,7 @@ export const VChartWrapper: React.FC<VChartWrapperProps> = ({
 }) => {
   return (
     <div className={`w-full h-full ${className}`} style={style}>
-      <VChart spec={spec} option={CHART_CONFIG} />
+      <VChart spec={spec} options={CHART_CONFIG} />
     </div>
   );
 };

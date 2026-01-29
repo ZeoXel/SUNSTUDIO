@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { VChart } from '@visactor/react-vchart';
-import { modelToColor, CHART_CONFIG } from './VChartWrapper';
+import { CHART_CONFIG } from './VChartWrapper';
 
 interface BarDataPoint {
   model: string;
@@ -12,13 +12,11 @@ interface BarDataPoint {
 
 interface VBarChartProps {
   data: BarDataPoint[];
-  title?: string;
   valueLabel?: string;
 }
 
 export const VBarChart: React.FC<VBarChartProps> = ({
   data,
-  title,
   valueLabel = '消耗',
 }) => {
   const spec = useMemo(() => {
@@ -34,8 +32,6 @@ export const VBarChart: React.FC<VBarChartProps> = ({
     data.forEach(d => {
       colorMap[d.model] = d.color;
     });
-
-    const total = data.reduce((sum, d) => sum + d.value, 0);
 
     return {
       type: 'bar',
@@ -54,29 +50,14 @@ export const VBarChart: React.FC<VBarChartProps> = ({
           },
         },
       },
-      title: title ? {
-        visible: true,
-        text: title,
-        subtext: `总计：${total.toFixed(1)}`,
-        textStyle: {
-          fontSize: 14,
-          fontWeight: 'bold',
-          fill: '#64748b',
-        },
-        subtextStyle: {
-          fontSize: 12,
-          fill: '#94a3b8',
-        },
-      } : { visible: false },
-      legends: {
-        visible: false,
-      },
+      title: { visible: false },
+      legends: { visible: false },
       label: {
         visible: true,
         position: 'top',
         style: {
           fill: '#64748b',
-          fontSize: 10,
+          fontSize: 9,
         },
         formatMethod: (v: number) => v.toFixed(1),
       },
@@ -87,9 +68,9 @@ export const VBarChart: React.FC<VBarChartProps> = ({
             style: {
               fill: '#94a3b8',
               fontSize: 9,
-              angle: -30,
+              angle: -25,
             },
-            formatMethod: (v: string) => v.length > 12 ? v.slice(0, 12) + '...' : v,
+            formatMethod: (v: string) => v.length > 10 ? v.slice(0, 10) + '..' : v,
           },
           tick: { visible: false },
           domainLine: { visible: false },
@@ -120,10 +101,11 @@ export const VBarChart: React.FC<VBarChartProps> = ({
       color: {
         specified: colorMap,
       },
-      padding: { top: 40, right: 20, bottom: 50, left: 40 },
+      padding: { top: 20, right: 15, bottom: 45, left: 35 },
       background: 'transparent',
+      animation: false,
     };
-  }, [data, title, valueLabel]);
+  }, [data, valueLabel]);
 
   if (data.length === 0) {
     return (
@@ -135,7 +117,7 @@ export const VBarChart: React.FC<VBarChartProps> = ({
 
   return (
     <div className="w-full h-full">
-      <VChart spec={spec} option={CHART_CONFIG} />
+      <VChart spec={spec as any} options={CHART_CONFIG} />
     </div>
   );
 };
