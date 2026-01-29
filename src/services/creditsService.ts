@@ -15,32 +15,53 @@ import type {
  * 从USERAPI获取积分余额
  */
 export const getCreditBalance = async (): Promise<CreditBalance> => {
-  try {
-    const response = await fetch('/api/user/balance', { method: 'GET' });
-    if (!response.ok) {
-      throw new Error('Failed to fetch balance');
+  const maxRetries = 2;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch('/api/user/balance', {
+        method: 'GET',
+        credentials: 'include', // 确保发送 cookies
+      });
+
+      if (!response.ok) {
+        // 如果是 401 且不是最后一次尝试，等待后重试
+        if (response.status === 401 && attempt < maxRetries) {
+          console.log(`[getCreditBalance] 401 error, retrying (${attempt + 1}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error('Failed to fetch balance');
+      }
+
+      const result = await response.json();
+      if (!result?.success || !result?.data) {
+        throw new Error('Invalid balance response');
+      }
+
+      const total = Math.round((result.data.totalRecharge || 0) * 10);
+      const used = Math.round((result.data.apiConsumption || 0) * 10);
+      const remaining = Number(result.data.currentBalance || 0);
+
+      return {
+        total,
+        used,
+        remaining,
+        locked: 0,
+      };
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        console.log(`[getCreditBalance] Error on attempt ${attempt + 1}, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      }
     }
-
-    const result = await response.json();
-    if (!result?.success || !result?.data) {
-      throw new Error('Invalid balance response');
-    }
-
-    const total = Math.round((result.data.totalRecharge || 0) * 10);
-    const used = Math.round((result.data.apiConsumption || 0) * 10);
-    const remaining = Number(result.data.currentBalance || 0);
-
-    return {
-      total,
-      used,
-      remaining,
-      locked: 0,
-    };
-  } catch (error) {
-    console.error('Error fetching credit balance:', error);
-    // 失败时回退到从用户信息获取
-    return getCreditBalanceFromUserInfo();
   }
+
+  console.error('Error fetching credit balance after retries:', lastError);
+  // 失败时回退到从用户信息获取
+  return getCreditBalanceFromUserInfo();
 };
 
 /**

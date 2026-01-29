@@ -66,6 +66,11 @@ let cosInstance: any = null;
 function getCosInstance(): any {
   if (cosInstance) return cosInstance;
 
+  // 检查必需的配置
+  if (!COS_CONFIG.secretId || !COS_CONFIG.secretKey) {
+    throw new Error('COS credentials not configured. Please set COS_SECRET_ID and COS_SECRET_KEY environment variables.');
+  }
+
   cosInstance = new COS({
     SecretId: COS_CONFIG.secretId,
     SecretKey: COS_CONFIG.secretKey,

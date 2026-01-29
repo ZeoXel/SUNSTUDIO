@@ -176,38 +176,56 @@ export const syncUserToUserApi = async (params: {
  * 通过 API Key 或 provider 认证
  */
 export const getUserInfo = async (): Promise<UserMeResponse | null> => {
-    try {
-        const response = await fetch('/api/user/profile');
-        if (!response.ok) {
-            return null;
-        }
+    const maxRetries = 2;
 
-        const profile = await response.json();
-        return {
-            user: {
-                id: profile.id,
-                provider: 'tencent',
-                name: profile.name,
-                username: profile.name,
-                email: null,
-                phone: profile.phone || null,
-                avatar: null,
-                role: profile.role || 'user',
-                status: 'active',
-                createdAt: profile.createdAt,
-            },
-            keys: [],
-            usage: {
-                last30Days: {
-                    totalRequests: 0,
-                    totalCost: 0,
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch('/api/user/profile', {
+                credentials: 'include', // 确保发送 cookies
+            });
+
+            if (!response.ok) {
+                // 如果是 401 且不是最后一次尝试，等待后重试
+                if (response.status === 401 && attempt < maxRetries) {
+                    console.log(`[getUserInfo] 401 error, retrying (${attempt + 1}/${maxRetries})...`);
+                    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+                    continue;
+                }
+                return null;
+            }
+
+            const profile = await response.json();
+            return {
+                user: {
+                    id: profile.id,
+                    provider: 'tencent',
+                    name: profile.name,
+                    username: profile.name,
+                    email: null,
+                    phone: profile.phone || null,
+                    avatar: null,
+                    role: profile.role || 'user',
+                    status: 'active',
+                    createdAt: profile.createdAt,
                 },
-            },
-            balance: profile.balance || 0,
-        };
-    } catch {
-        return null;
+                keys: [],
+                usage: {
+                    last30Days: {
+                        totalRequests: 0,
+                        totalCost: 0,
+                    },
+                },
+                balance: profile.balance || 0,
+            };
+        } catch (error) {
+            if (attempt < maxRetries) {
+                console.log(`[getUserInfo] Error on attempt ${attempt + 1}, retrying...`);
+                await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+            }
+        }
     }
+
+    return null;
 };
 
 /**

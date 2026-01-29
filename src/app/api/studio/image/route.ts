@@ -41,12 +41,17 @@ export async function POST(request: NextRequest) {
 
         let urls: string[];
 
-        const { apiKey } = await getAssignedGatewayKey();
+        console.log('[Studio Image API] Getting assigned gateway key...');
+        const { userId, apiKey } = await getAssignedGatewayKey();
+        console.log('[Studio Image API] Gateway key result:', { userId, hasApiKey: !!apiKey });
+
         if (!apiKey) {
             return NextResponse.json({ error: '未分配可用的API Key' }, { status: 401 });
         }
         const gatewayBaseUrl = process.env.GATEWAY_BASE_URL || 'https://api.lsaigc.com';
+        console.log('[Studio Image API] Gateway base URL:', gatewayBaseUrl);
 
+        console.log('[Studio Image API] Calling generateImage...');
         const result = await generateImage({
             prompt,
             model: usedModel,
@@ -59,6 +64,7 @@ export async function POST(request: NextRequest) {
             baseUrl: gatewayBaseUrl,
         });
         urls = result.urls;
+        console.log('[Studio Image API] Image generation successful, URLs:', urls.length);
 
         // 上传到 COS 存储（将临时 URL 转为永久存储）
         // 使用统一路径结构: zeocanvas/{userId}/images/{filename}
@@ -74,7 +80,9 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
         console.error('[Studio Image API] Error:', error);
+        console.error('[Studio Image API] Error message:', error.message);
         console.error('[Studio Image API] Error stack:', error.stack);
+        console.error('[Studio Image API] Error cause:', error.cause);
 
         let errorMessage: string;
         if (error.cause?.code === 'ENOTFOUND') {

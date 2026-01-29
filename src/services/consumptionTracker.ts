@@ -74,22 +74,15 @@ const normalizeBalanceInfo = (data: BalanceFastResponse['data']) => {
  * 刷新用户余额（网关实时计费）
  */
 export async function recordConsumption(record: ConsumptionRecord): Promise<RecordConsumptionResponse> {
-  const apiKey = getApiKey();
-
-  if (!apiKey) {
-    console.warn('[ConsumptionTracker] No API key, skipping balance refresh');
-    return { success: false, error: 'No API key' };
-  }
-
   try {
+    console.log('[ConsumptionTracker] Recording consumption:', record.service, record.provider);
+
     const response = await fetch('/api/user/balance-fast', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        apiKey,
-      }),
+      credentials: 'include', // 使用 session 认证
     });
 
     if (!response.ok) {

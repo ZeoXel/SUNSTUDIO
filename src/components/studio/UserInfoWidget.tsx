@@ -29,7 +29,7 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
   onOpenModal,
   onOpenLogin,
 }) => {
-  const { user: authUser, logout } = useAuth();
+  const { user: authUser, logout, isLoading } = useAuth();
   const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const widgetRef = useRef<HTMLDivElement>(null);
@@ -45,11 +45,16 @@ export const UserInfoWidget: React.FC<UserInfoWidgetProps> = ({
     }
   };
 
+  // 初始加载余额
   useEffect(() => {
-    // 初始加载
-    fetchCreditBalance();
+    // 只有在认证状态确定且用户已登录时才获取余额
+    if (!isLoading && authUser) {
+      fetchCreditBalance();
+    }
+  }, [isLoading, authUser]);
 
-    // 监听积分更新事件
+  // 监听积分更新事件
+  useEffect(() => {
     const unsubscribe = onCreditsUpdated((detail) => {
       console.log('[UserInfoWidget] Credits updated:', detail);
       // 直接更新余额，而不是重新请求

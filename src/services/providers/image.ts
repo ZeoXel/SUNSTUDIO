@@ -39,9 +39,23 @@ const getProviderFromModel = (model: string): 'nano-banana' | 'seedream' | 'gemi
  * 统一图像生成
  */
 export const generateImage = async (options: ImageGenerateOptions): Promise<ImageGenerationResult> => {
+  console.log('[generateImage] Starting with options:', {
+    model: options.model,
+    hasPrompt: !!options.prompt,
+    hasApiKey: !!options.apiKey,
+    baseUrl: options.baseUrl,
+    count: options.count,
+  });
+
   const { baseUrl, apiKey } = getApiConfig();
   const resolvedBaseUrl = options.baseUrl || baseUrl;
   const resolvedApiKey = options.apiKey ?? apiKey;
+
+  console.log('[generateImage] Resolved config:', {
+    resolvedBaseUrl,
+    hasResolvedApiKey: !!resolvedApiKey,
+    isGatewayProxy: isGatewayProxyBaseUrl(resolvedBaseUrl),
+  });
 
   if (!resolvedApiKey && !isGatewayProxyBaseUrl(resolvedBaseUrl)) {
     throw new Error('API Key未配置');
@@ -49,6 +63,8 @@ export const generateImage = async (options: ImageGenerateOptions): Promise<Imag
 
   const provider = getProviderFromModel(options.model);
   const count = options.count || 1;
+
+  console.log('[generateImage] Provider:', provider, 'Count:', count);
 
   // nano-banana / seedream 通过批量请求实现组图生成
   if ((provider === 'nano-banana' || provider === 'seedream') && count > 1) {
@@ -68,6 +84,7 @@ export const generateImage = async (options: ImageGenerateOptions): Promise<Imag
   }
 
   // 单图生成或 Gemini 模型
+  console.log('[generateImage] Calling generateSingleImage...');
   return generateSingleImage(resolvedBaseUrl, resolvedApiKey || '', options, provider);
 };
 
@@ -80,6 +97,13 @@ const generateSingleImage = async (
   options: ImageGenerateOptions,
   provider: 'nano-banana' | 'seedream' | 'gemini'
 ): Promise<ImageGenerationResult> => {
+  console.log('[generateSingleImage] Starting with:', {
+    baseUrl,
+    hasApiKey: !!apiKey,
+    provider,
+    model: options.model,
+  });
+
   const body: Record<string, any> = {
     model: options.model,
     prompt: options.prompt,
@@ -102,6 +126,8 @@ const generateSingleImage = async (
     body.image_size = options.imageSize;
   }
 
+  console.log('[generateSingleImage] Request body:', JSON.stringify(body, null, 2));
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -109,18 +135,26 @@ const generateSingleImage = async (
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const response = await fetch(`${baseUrl}/v1/images/generations`, {
+  const url = `${baseUrl}/v1/images/generations`;
+  console.log('[generateSingleImage] Fetching:', url);
+
+  const response = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
   });
 
+  console.log('[generateSingleImage] Response status:', response.status);
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    console.error('[generateSingleImage] Error response:', errorData);
     throw new Error(`图像生成失败: ${response.status} - ${handleApiError(errorData)}`);
   }
 
   const result = await response.json();
+  console.log('[generateSingleImage] Success, data items:', result.data?.length);
+
   const urls = result.data
     .map((d: any) => d.url || (d.b64_json ? `data:image/png;base64,${d.b64_json}` : null))
     .filter(Boolean) as string[];
@@ -129,6 +163,7 @@ const generateSingleImage = async (
     throw new Error('未返回图像结果');
   }
 
+  console.log('[generateSingleImage] Returning', urls.length, 'URLs');
   return { urls, created: result.created };
 };
 

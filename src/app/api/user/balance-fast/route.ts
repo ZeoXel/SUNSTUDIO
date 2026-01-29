@@ -14,13 +14,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未登录' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { apiKey, userShortId } = body
-
-    if (!apiKey || !apiKey.startsWith('sk-')) {
-      return NextResponse.json({ error: '无效的API密钥' }, { status: 400 })
-    }
-
+    // 获取用户信息
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('total_recharge_amount, short_id')
@@ -37,12 +31,31 @@ export async function POST(request: NextRequest) {
     }
 
     const totalRechargeInYuan = user.total_recharge_amount || 0
-    const shortId = userShortId || user.short_id
+    const shortId = user.short_id
 
+    // 获取用户分配的 API Key
     const userKeys = await ApiKeyService.getApiKeysByUserId(session.user.id)
-    const currentKey = userKeys.find(k => k.key_value === apiKey && k.status === 'assigned')
-    const provider = currentKey?.provider || 'lsapi'
+    const currentKey = userKeys.find(k => k.status === 'assigned')
 
+    if (!currentKey) {
+      console.warn('[balance-fast] No assigned API key found for user:', session.user.id)
+      // 没有分配的 key，返回充值金额作为余额
+      return NextResponse.json({
+        success: true,
+        data: {
+          balance: totalRechargeInYuan * 10,
+          totalRechargeAmount: totalRechargeInYuan,
+          totalRecharge: totalRechargeInYuan,
+          apiConsumption: 0,
+          message: '余额刷新完成（无API消耗）',
+        },
+      })
+    }
+
+    const apiKey = currentKey.key_value
+    const provider = currentKey.provider || 'lsapi'
+
+    // 查询 API Key 使用情况
     const usage = await BalanceService.queryApiKeyUsage(apiKey, session.user.id, shortId, provider)
 
     let apiConsumption = 0
