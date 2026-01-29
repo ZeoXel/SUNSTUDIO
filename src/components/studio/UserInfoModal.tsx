@@ -8,6 +8,7 @@ import { fetchAssignedApiKey } from '@/services/userKeyService';
 import type { CreditInfo } from '@/types/credits';
 import { TrendChart } from './charts/TrendChart';
 import { DonutChart } from './charts/DonutChart';
+import { UserAvatar } from './UserAvatar';
 
 interface UserInfoModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [editedUsername, setEditedUsername] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
+  const [hoveredSegment, setHoveredSegment] = useState<{ label: string; value: number; color: string } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,17 +158,24 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 厂商/模型颜色映射
+  // 模型颜色映射
   const providerColors: Record<string, { text: string; fill: string }> = {
     // 视频类
     'vidu': { text: 'text-purple-600 dark:text-purple-400', fill: '#a855f7' },
     'viduq1-pro': { text: 'text-purple-600 dark:text-purple-400', fill: '#a855f7' },
     'viduq2-pro': { text: 'text-purple-500 dark:text-purple-300', fill: '#c084fc' },
+    'viduq2-turbo': { text: 'text-violet-500 dark:text-violet-300', fill: '#8b5cf6' },
+    'veo': { text: 'text-indigo-600 dark:text-indigo-400', fill: '#6366f1' },
+    'veo3': { text: 'text-indigo-600 dark:text-indigo-400', fill: '#6366f1' },
+    'veo3.1': { text: 'text-indigo-500 dark:text-indigo-300', fill: '#818cf8' },
+    'seedance': { text: 'text-fuchsia-600 dark:text-fuchsia-400', fill: '#d946ef' },
     'seedance-1-lite': { text: 'text-fuchsia-600 dark:text-fuchsia-400', fill: '#d946ef' },
+    'doubao-seedance': { text: 'text-fuchsia-500 dark:text-fuchsia-300', fill: '#e879f9' },
     // 图像类
     'nano-banana': { text: 'text-yellow-600 dark:text-yellow-400', fill: '#eab308' },
-    'seedream-3.0': { text: 'text-emerald-600 dark:text-emerald-400', fill: '#10b981' },
     'seedream': { text: 'text-emerald-600 dark:text-emerald-400', fill: '#10b981' },
+    'seedream-3.0': { text: 'text-emerald-600 dark:text-emerald-400', fill: '#10b981' },
+    'doubao-seedream': { text: 'text-teal-500 dark:text-teal-300', fill: '#14b8a6' },
     'flux-pro': { text: 'text-blue-600 dark:text-blue-400', fill: '#3b82f6' },
     // 音频类
     'suno': { text: 'text-red-600 dark:text-red-400', fill: '#ef4444' },
@@ -177,7 +186,13 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
     'default': { text: 'text-slate-600 dark:text-slate-400', fill: '#64748b' },
   };
 
-  const getProviderColor = (provider: string) => {
+  // 预定义的颜色列表，用于未匹配的模型
+  const fallbackColors = [
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+    '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
+  ];
+
+  const getProviderColor = (provider: string, index?: number) => {
     // 尝试精确匹配
     if (providerColors[provider]) return providerColors[provider];
     // 尝试前缀匹配
@@ -186,28 +201,44 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
         return providerColors[key];
       }
     }
-    // 基于索引生成不同颜色
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
-    const index = Math.abs(provider.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % colors.length;
-    return { text: 'text-slate-600 dark:text-slate-400', fill: colors[index] };
+    // 基于索引或字符串哈希生成不同颜色
+    const colorIndex = index !== undefined
+      ? index % fallbackColors.length
+      : Math.abs(provider.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % fallbackColors.length;
+    return { text: 'text-slate-600 dark:text-slate-400', fill: fallbackColors[colorIndex] };
   };
 
   const getProviderName = (provider: string) => {
     const names: Record<string, string> = {
+      // 视频
       'vidu': 'Vidu',
       'viduq1-pro': 'Vidu Q1 Pro',
       'viduq2-pro': 'Vidu Q2 Pro',
-      'seedance-1-lite': 'Seedance Lite',
+      'viduq2-turbo': 'Vidu Q2 Turbo',
+      'veo': 'Veo',
+      'veo3': 'Veo 3',
+      'veo3.1': 'Veo 3.1',
+      // 图像
       'nano-banana': 'Nano Banana',
-      'seedream-3.0': 'Seedream 3.0',
       'seedream': 'Seedream',
+      'seedream-3.0': 'Seedream 3.0',
       'flux-pro': 'Flux Pro',
+      // 音频
       'suno': 'Suno',
       'chirp-v4': 'Suno Chirp V4',
       'speech-2.6-hd': 'MiniMax TTS',
       'minimax': 'MiniMax',
     };
-    return names[provider] || provider;
+    // 精确匹配
+    if (names[provider]) return names[provider];
+    // 前缀匹配
+    for (const [key, name] of Object.entries(names)) {
+      if (provider.toLowerCase().includes(key.toLowerCase())) {
+        return name;
+      }
+    }
+    // 返回原始名称（首字母大写）
+    return provider.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
   };
 
   // 服务类型名称（用于交易记录显示）
@@ -227,11 +258,11 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
     value: d.consumption
   })) || [];
 
-  // 准备环形图数据（按厂商/模型分类）
-  const donutData = creditInfo?.usage.last30Days.byProvider?.map(item => ({
+  // 准备环形图数据（按模型分类）
+  const donutData = creditInfo?.usage.last30Days.byProvider?.map((item, index) => ({
     label: getProviderName(item.provider),
     value: item.consumption,
-    color: getProviderColor(item.provider).fill
+    color: getProviderColor(item.provider, index).fill
   })) || [];
 
   return (
@@ -303,18 +334,14 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
               {/* 左侧：用户信息 */}
               <div className="col-span-1 space-y-6">
                 <div className="flex flex-col items-center text-center">
-                  {userData?.user.avatar ? (
-                    <img
-                      src={userData.user.avatar}
-                      alt={userData.user.username || userData.user.name}
-                      className="w-24 h-24 rounded-full object-cover border-4 border-slate-200 dark:border-slate-700 mb-4"
-                    />
+                  {loadingUser && !userData ? (
+                    <div className="w-24 h-24 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse mb-4" />
                   ) : (
-                    <div className={`w-24 h-24 rounded-full flex items-center justify-center border-4 border-slate-200 dark:border-slate-700 mb-4 ${
-                      loadingUser ? 'bg-slate-200 dark:bg-slate-700 animate-pulse' : 'bg-slate-200 dark:bg-slate-700'
-                    }`}>
-                      {!loadingUser && <User className="w-12 h-12 text-slate-600 dark:text-slate-400" />}
-                    </div>
+                    <UserAvatar
+                      name={userData?.user.username || userData?.user.name}
+                      size={96}
+                      className="mb-4"
+                    />
                   )}
 
                   {loadingUser && !userData ? (
@@ -545,9 +572,9 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
             </div>
           ) : (
             /* 积分明细内容 - 优化布局铺满 */
-            <div className="h-full flex flex-col gap-5">
+            <div className="h-full flex flex-col gap-4 overflow-hidden">
               {/* 积分概览 - 水平排列 */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-4 flex-shrink-0">
                 {loadingCredits && !creditInfo ? (
                   <>
                     {[1, 2, 3].map((i) => (
@@ -581,13 +608,13 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                 )}
               </div>
 
-              {/* 主要内容区 */}
-              <div className="flex-1 grid grid-cols-3 gap-5 min-h-0">
+              {/* 主要内容区 - 使用 flex-1 填充剩余空间 */}
+              <div className="flex-1 grid grid-cols-3 gap-4 min-h-0 overflow-hidden">
                 {/* 左侧：趋势图 + 快速统计 */}
-                <div className="col-span-2 flex flex-col gap-5">
-                  {/* 7天消耗趋势图 */}
-                  <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-4 flex flex-col">
-                    <div className="flex items-center gap-2 mb-3">
+                <div className="col-span-2 flex flex-col gap-4 min-h-0">
+                  {/* 7天消耗趋势图 - 使用 flex-1 自适应 */}
+                  <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-4 flex flex-col min-h-0">
+                    <div className="flex items-center gap-2 mb-2 flex-shrink-0">
                       <TrendingUp size={16} className="text-slate-500 dark:text-slate-400" />
                       <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                         7天消耗趋势
@@ -596,8 +623,8 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                     {loadingCredits && !creditInfo ? (
                       <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse" />
                     ) : trendData.length > 0 ? (
-                      <div className="flex-1">
-                        <TrendChart data={trendData} height={180} color="#3b82f6" />
+                      <div className="flex-1 min-h-0">
+                        <TrendChart data={trendData} color="#3b82f6" />
                       </div>
                     ) : (
                       <div className="flex-1 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
@@ -606,8 +633,8 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                     )}
                   </div>
 
-                  {/* 快速统计 */}
-                  <div className="grid grid-cols-3 gap-4">
+                  {/* 快速统计 - 固定高度 */}
+                  <div className="grid grid-cols-3 gap-4 flex-shrink-0">
                     {loadingCredits && !creditInfo ? (
                       <>
                         {[1, 2, 3].map((i) => (
@@ -622,7 +649,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                         <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                           <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">今日</div>
                           <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                            {creditInfo?.usage.today.consumption.toFixed(0) || 0}
+                            {creditInfo?.usage.today.consumption.toFixed(1) || 0}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {creditInfo?.usage.today.transactions || 0} 次
@@ -631,7 +658,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                         <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                           <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">7天</div>
                           <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                            {creditInfo?.usage.last7Days.consumption.toFixed(0) || 0}
+                            {creditInfo?.usage.last7Days.consumption.toFixed(1) || 0}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {creditInfo?.usage.last7Days.transactions || 0} 次
@@ -640,7 +667,7 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                         <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                           <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">30天</div>
                           <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                            {creditInfo?.usage.last30Days.consumption.toFixed(0) || 0}
+                            {creditInfo?.usage.last30Days.consumption.toFixed(1) || 0}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {creditInfo?.usage.last30Days.transactions || 0} 次
@@ -651,36 +678,53 @@ export const UserInfoModal: React.FC<UserInfoModalProps> = ({
                   </div>
                 </div>
 
-                {/* 右侧：厂商占比环形图 */}
-                <div className="col-span-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-4 flex flex-col">
-                  <div className="flex items-center gap-2 mb-3">
+                {/* 右侧：模型占比环形图 - 与左侧底部对齐 */}
+                <div className="col-span-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-4 flex flex-col min-h-0">
+                  <div className="flex items-center gap-2 mb-3 flex-shrink-0">
                     <Activity size={16} className="text-slate-500 dark:text-slate-400" />
                     <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                      厂商占比
+                      模型占比
                     </span>
                   </div>
                   {loadingCredits && !creditInfo ? (
                     <div className="flex-1 flex items-center justify-center">
-                      <div className="w-48 h-48 bg-slate-200 dark:bg-slate-700 rounded-full animate-pulse" />
+                      <div className="w-36 h-36 bg-slate-200 dark:bg-slate-700 rounded-full animate-pulse" />
                     </div>
                   ) : donutData.length > 0 ? (
-                    <div className="flex-1 flex flex-col justify-center">
-                      <DonutChart data={donutData} size={200} thickness={36} />
-                      <div className="mt-4 space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
-                        {creditInfo?.usage.last30Days.byProvider.map((item) => (
-                          <div key={item.provider} className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
+                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                      <div className="flex-shrink-0 flex justify-center">
+                        <DonutChart
+                          data={donutData}
+                          size={140}
+                          thickness={24}
+                          onHover={(segment) => setHoveredSegment(segment)}
+                        />
+                      </div>
+                      <div className="mt-3 flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                        {creditInfo?.usage.last30Days.byProvider.map((item, index) => (
+                          <div
+                            key={`${item.provider}-${index}`}
+                            className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-default"
+                            onMouseEnter={() => setHoveredSegment({ label: getProviderName(item.provider), value: item.consumption, color: getProviderColor(item.provider, index).fill })}
+                            onMouseLeave={() => setHoveredSegment(null)}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
                               <div
                                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: getProviderColor(item.provider).fill }}
+                                style={{ backgroundColor: getProviderColor(item.provider, index).fill }}
                               />
                               <span className="text-slate-600 dark:text-slate-300 truncate">
                                 {getProviderName(item.provider)}
                               </span>
                             </div>
-                            <span className="font-bold text-slate-900 dark:text-slate-100 flex-shrink-0 ml-2">
-                              {item.percentage}%
-                            </span>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {item.consumption.toFixed(1)}
+                              </span>
+                              <span className="font-bold text-slate-900 dark:text-slate-100 w-8 text-right">
+                                {item.percentage}%
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>

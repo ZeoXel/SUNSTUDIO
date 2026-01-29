@@ -46,6 +46,8 @@ const forward = async (request: NextRequest, path: string[]) => {
     headers.delete(h);
   }
   headers.set('Authorization', `Bearer ${apiKey}`);
+  // 告诉上游服务器我们接受 identity（不压缩）响应，避免 gzip 解压问题
+  headers.set('Accept-Encoding', 'identity');
 
   const method = request.method.toUpperCase();
   const body = method === 'GET' || method === 'HEAD'
@@ -59,7 +61,9 @@ const forward = async (request: NextRequest, path: string[]) => {
   });
 
   const responseHeaders = new Headers(response.headers);
+  // 移除可能残留的编码相关头
   responseHeaders.delete('content-encoding');
+  responseHeaders.delete('transfer-encoding');
 
   return new NextResponse(response.body, {
     status: response.status,
