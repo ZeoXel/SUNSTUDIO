@@ -56,7 +56,7 @@ if (AlipaySdk && process.env.ALIPAY_APPID) {
   }
 }
 
-// 支付宝PC网页支付
+// 支付宝扫码支付（当面付）
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -103,27 +103,37 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      // 生成PC网页支付表单
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-      const formData = await alipaySdk.pageExec('alipay.trade.page.pay', {
+
+      // 使用当面付预下单接口，生成二维码
+      const result = await alipaySdk.exec('alipay.trade.precreate', {
         bizContent: {
           out_trade_no: order.orderNo,
           total_amount: (amount / 100).toFixed(2),
           subject: description,
-          product_code: 'FAST_INSTANT_TRADE_PAY',
           timeout_express: '15m',
         },
-        returnUrl: `${baseUrl}/pay-result?orderNo=${order.orderNo}`,
         notifyUrl: `${baseUrl}/api/payment/alipay/notify`,
       })
+
+      console.log('[Alipay] 预下单结果:', result)
+
+      // 检查返回结果
+      if (result.code !== '10000') {
+        console.error('[Alipay] 预下单失败:', result)
+        return NextResponse.json(
+          { error: '支付宝下单失败', message: result.subMsg || result.msg || '未知错误' },
+          { status: 500 }
+        )
+      }
 
       return NextResponse.json({
         success: true,
         data: {
-          payment_form: formData,
+          qr_code: result.qrCode,
           order_no: order.orderNo,
           pay_type: 'alipay',
-          payment_method: 'pc',
+          payment_method: 'qrcode',
           amount,
           points,
         },

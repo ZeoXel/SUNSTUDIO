@@ -28,27 +28,11 @@ export default function RechargeModal({
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('select')
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [pollingTimer, setPollingTimer] = useState<NodeJS.Timeout | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
 
   const selectedOption = rechargeOptions.find(opt => opt.amount === selectedAmount)
   const totalPoints = selectedOption
     ? selectedOption.points + (selectedOption.bonus || 0)
     : Math.floor((selectedAmount / 100) * 10)
-
-  // 检测移动端
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const checkMobile = () => {
-      const width = window.innerWidth
-      const height = window.innerHeight
-      setIsMobile(height >= width && width <= 768)
-    }
-
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
 
   // 清理轮询
   useEffect(() => {
@@ -122,7 +106,7 @@ export default function RechargeModal({
 
     try {
       const endpoint = paymentMethod === 'alipay'
-        ? (isMobile ? '/api/payment/alipay/wap' : '/api/payment/alipay')
+        ? '/api/payment/alipay'
         : '/api/payment/wechat'
 
       const res = await fetch(endpoint, {
@@ -140,27 +124,10 @@ export default function RechargeModal({
       const orderNo = result.data.order_no
       setCurrentOrderNo(orderNo)
 
-      if (paymentMethod === 'alipay') {
-        // 支付宝：提交表单
-        const div = document.createElement('div')
-        div.innerHTML = result.data.payment_form
-        document.body.appendChild(div)
-
-        const form = div.querySelector('form') as HTMLFormElement
-        if (form) {
-          form.target = isMobile ? '_self' : '_blank'
-          form.submit()
-        }
-
-        setTimeout(() => document.body.removeChild(div), 1000)
-        setPaymentStep('waiting')
-        pollPaymentStatus(orderNo)
-      } else {
-        // 微信：显示二维码
-        setQrCodeUrl(result.data.qr_code)
-        setPaymentStep('waiting')
-        pollPaymentStatus(orderNo)
-      }
+      // 支付宝和微信都使用二维码
+      setQrCodeUrl(result.data.qr_code)
+      setPaymentStep('waiting')
+      pollPaymentStatus(orderNo)
     } catch (err) {
       console.error('支付失败:', err)
       setError(err instanceof Error ? err.message : '支付请求失败')
@@ -257,11 +224,11 @@ export default function RechargeModal({
               </div>
             )}
 
-            {/* 微信二维码 */}
-            {paymentStep === 'waiting' && paymentMethod === 'wechat' && qrCodeUrl && (
+            {/* 二维码支付 - 支付宝和微信统一显示 */}
+            {paymentStep === 'waiting' && qrCodeUrl && (
               <div className="text-center space-y-4">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  请使用微信扫码支付
+                  请使用{paymentMethod === 'alipay' ? '支付宝' : '微信'}扫码支付
                 </p>
                 <div className="flex justify-center">
                   <div className="bg-white p-4 rounded-lg shadow-sm">
@@ -276,19 +243,6 @@ export default function RechargeModal({
                   等待支付中...
                 </div>
                 <p className="text-xs text-slate-400">订单号: {currentOrderNo.slice(-12)}</p>
-              </div>
-            )}
-
-            {/* 支付宝等待 */}
-            {paymentStep === 'waiting' && paymentMethod === 'alipay' && (
-              <div className="text-center space-y-4 py-8">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-slate-900 dark:text-slate-100 font-medium">
-                  请在新窗口完成支付宝支付
-                </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  支付完成后此页面将自动更新
-                </p>
                 <button
                   onClick={resetState}
                   className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
